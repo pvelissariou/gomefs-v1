@@ -1,0 +1,273 @@
+#!/bin/bash
+
+# Author:  Panagiotis Velissariou <pvelissariou@fsu.edu>
+#                                 <velissariou.1@osu.edu>
+# Version: 1.0
+#
+# Version - 1.0 Sun Feb 23 2014
+
+# Make sure that the current working directory is in the PATH
+[[ ! :$PATH: == *:".":* ]] && export PATH="${PATH}:."
+
+scrNAME=`basename $0`
+
+
+#------------------------------------------------------------
+# SOURCE THE FORECAST FUNCTIONS
+if [ -f functions_cast ]; then
+  source functions_cast
+else
+  echo " ### ERROR:: in ${scrNAME}"
+  echo "     Cannot load the required file: functions_cast"
+  echo "     Exiting now ..."
+  echo
+  exit 1
+fi
+
+# SOURCE THE ENVIRONMENT FILE IF IT EXISTS
+if [ -f cast_env ]; then
+  source cast_env
+fi
+#------------------------------------------------------------
+
+
+####################
+# Get the forecast cycle in respect to the currnt local date/time
+#GetMode_Cycle --mode=fcast --hour=${CAST_CYCLE} \
+#              --pdays=${CAST_INIT_DAYS} --ndays=${CAST_LENGTH}
+
+#GetMode_Cycle --mode=fcast --hour=${CAST_CYCLE} \
+#              --pdays=${CAST_INIT_DAYS} --ndays=${CAST_LENGTH}
+
+GetMode_Cycle --mode=fcast --date="2015-12-06 00:00:00" \
+              --pdays=${CAST_INIT_DAYS} --ndays=${CAST_LENGTH}
+
+#GetMode_Cycle --mode=hcast \
+#              --hdate1="2014-07-01 00:00:00" --hdate2="2014-12-01 00:00:00"
+echo
+echo "LocDate   = ${LocDate}"
+echo "BegDate   = ${BegDate}"
+[ -n "${FcastDate:+1}" ] && echo "FcastDate = ${FcastDate}"
+[ -n "${HcastDate:+1}" ] && echo "HcastDate = ${HcastDate}"
+[ -n "${NcastDate:+1}" ] && echo "NcastDate = ${NcastDate}"
+echo "EndDate   = ${EndDate}"
+echo "MODE      = ${MODE}"
+echo "MODE_PFX  = ${MODE_PFX}"
+echo "MODE_STR  = ${MODE_STR}"
+####################
+
+
+#------------------------------------------------------------
+# SET SOME FORECAST/HINDCAST/NOWCAST VARIABLES
+DataDir=${CAST_DATA:-.}${MODE_STR:+/${MODE_STR}}
+BryDir=${DataDir}/boundary
+IniDir=${DataDir}/ini
+OutDir=${CAST_OUT:-.}${MODE_STR:+/${MODE_STR}}
+IdlDir=${CAST_IDL:-.}
+MatDir=${CAST_MAT:-.}
+LogDir=${CAST_LOGS:-.}${MODE_STR:+/${MODE_STR}}
+PlotDir=${CAST_PLOTS:-.}${MODE_STR:+/${MODE_STR}}
+WebDir=${CAST_WEB:-.}${MODE_STR:+/${MODE_STR}}
+WpsDir=${CAST_WPS:-.}
+MODFILES="intel12 intel12-openmpi"
+
+
+if [ "X${CAST_XENV}" != "X" ]; then
+  [ -f ${CAST_XENV} ] && rm -f ${CAST_XENV}
+
+  ###########################################################
+  ##### Global forecsting system variables
+  echo "LocDate=\"${LocDate}\""            >> ${CAST_XENV}
+  echo "BegDate=\"${BegDate}\""            >> ${CAST_XENV}
+  [ -n "${FcastDate}" ] && \
+     echo "FcastDate=\"${FcastDate}\""     >> ${CAST_XENV}
+  [ -n "${HcastDate}" ] && \
+     echo "HcastDate=\"${HcastDate}\""     >> ${CAST_XENV}
+  [ -n "${NcastDate}" ] && \
+     echo "NcastDate=\"${NcastDate}\""     >> ${CAST_XENV}
+  echo "EndDate=\"${EndDate}\""            >> ${CAST_XENV}
+  echo "MODE=\"${MODE}\""                  >> ${CAST_XENV}
+  echo "MODE_PFX=\"${MODE_PFX}\""          >> ${CAST_XENV}
+  echo "MODE_STR=\"${MODE_STR}\""          >> ${CAST_XENV}
+  echo "DataDir=\"${DataDir}\""            >> ${CAST_XENV}
+  echo "OutDir=\"${OutDir}\""              >> ${CAST_XENV}
+  echo "BryDir=\"${BryDir}\""              >> ${CAST_XENV}
+  echo "IniDir=\"${IniDir}\""              >> ${CAST_XENV}
+  echo "IdlDir=\"${IdlDir}\""              >> ${CAST_XENV}
+  echo "MatDir=\"${MatDir}\""              >> ${CAST_XENV}
+  echo "LogDir=\"${LogDir}\""              >> ${CAST_XENV}
+  echo "PlotDir=\"${PlotDir}\""            >> ${CAST_XENV}
+  echo "WebDir=\"${WebDir}\""              >> ${CAST_XENV}
+  echo "WpsDir=\"${WpsDir}\""              >> ${CAST_XENV}
+  echo "DATA_INTERVAL=${ATM_DATA_HOURS}"   >> ${CAST_XENV}
+  echo "OcnSST=1"                          >> ${CAST_XENV}
+  echo "MODULE_FILES=\"${MODULE_FILES}\""  >> ${CAST_XENV}
+  ###########################################################
+
+  ###########################################################
+  ##### ImageMagick/GrapgicksMagick program and options
+  echo                                     >> ${CAST_XENV}
+  #echo "CONVERT=\"gm convert\""            >> ${CAST_XENV}
+  echo "CONVERT=\"convert\""               >> ${CAST_XENV}
+  ###########################################################
+
+  ###########################################################
+  ##### IDL program and options
+  echo                                     >> ${CAST_XENV}
+  echo "IDL_CMD=\"idl -quiet -queue\""     >> ${CAST_XENV}
+  ###########################################################
+
+  ###########################################################
+  ##### MATLAB program and options
+  echo                                     >> ${CAST_XENV}
+  echo "MAT_CMD=\"matlab -nodesktop -nosplash\"" \
+                                           >> ${CAST_XENV}
+  ###########################################################
+
+  ###########################################################
+  ##### GNU parallel program and options
+  echo                                     >> ${CAST_XENV}
+  echo "USE_PARALLEL=1"                    >> ${CAST_XENV}
+  echo "GPARAL=\"parallel\""               >> ${CAST_XENV}
+  echo "GPARAL_OPTS_GLB=\"--gnu --no-run-if-empty -vv --verbose --progress --halt 1\"" \
+                                           >> ${CAST_XENV}
+  echo "GPARAL_OPTS_SSH=\"--filter-hosts --slf ..\"" \
+                                           >> ${CAST_XENV}
+  echo "GPARAL_OPTS_TIME=\"--timeout 3600\"" \
+                                           >> ${CAST_XENV}
+  echo "GPARAL_OPTS_RESUME=\"--resume-failed --retries 1\"" \
+                                           >> ${CAST_XENV}
+  ###########################################################
+
+  ###########################################################
+  ##### Indices for subsetting the global hycom data and bathymetry
+  echo                                     >> ${CAST_XENV}
+  # For region: -104.00, 12.0, -70.48, 38.0 use the next four lines
+  #echo "GLBHC_I0=2273"                     >> ${CAST_XENV}
+  #echo "GLBHC_I1=2692"                     >> ${CAST_XENV}
+  #echo "GLBHC_J0=1656"                     >> ${CAST_XENV}
+  #echo "GLBHC_J1=2018"                     >> ${CAST_XENV}
+  # For region: -110.0, 10.0, -60.0, 40.0 use the next four lines
+  echo "GLBHC_I0=2198"                     >> ${CAST_XENV}
+  echo "GLBHC_I1=2823"                     >> ${CAST_XENV}
+  echo "GLBHC_J0=1630"                     >> ${CAST_XENV}
+  echo "GLBHC_J1=2050"                     >> ${CAST_XENV}
+  ###########################################################
+else
+  procError "the CAST_XENV environment variable is not set" \
+            "  CAST_XENV = ${CAST_XENV:-UNDEF}" \
+            "please set this variable to point to a non-existing file:" \
+            "use: export CAST_XENV=<filename>"
+fi
+#------------------------------------------------------------
+
+
+###########################################################
+##### Create the directories of the forecasting system if they do not exist
+makeDIR "${CAST_ROOT}"
+makeDIR "${CAST_DATA}"
+makeDIR "${CAST_BATH}"
+makeDIR "${CAST_BDRY}"
+makeDIR "${CAST_INIT}"
+makeDIR "${CAST_WGHT}"
+makeDIR "${CAST_LOGS}"
+makeDIR "${CAST_PLOTS}"
+makeDIR "${CAST_OUT}"
+makeDIR "${CAST_IDL}"
+makeDIR "${CAST_MAT}"
+makeDIR "${CAST_WEB}"
+makeDIR "${DataDir}"
+makeDIR "${BryDir}"
+makeDIR "${IniDir}"
+makeDIR "${OutDir}"
+makeDIR "${LogDir}"
+makeDIR "${IdlDir}"
+makeDIR "${MatDir}"
+makeDIR "${PlotDir}"
+makeDIR "${WebDir}"
+makeDIR "${WpsDir}"
+###########################################################
+
+
+###########################################################
+##### PRE-PROCESSING STAGE
+###########################################################
+
+###########################################################
+##### Get the required input data for all models
+TASK_PROG=getdata.sh
+TaskFound "${TASK_PROG}"
+
+${TASK_PROG} --start="${BegDate}" --end="${EndDate}" --doms="1 1 0 0" --rmdir
+[ $? -ne 0 ] && TaskError "${TASK_PROG}"
+
+#exit 0
+###########################################################
+##### Generate the initial and boundary conditions for all models
+TASK_PROG=make_inputs.sh
+TaskFound "${TASK_PROG}"
+
+${TASK_PROG} --start="${BegDate}" --end="${EndDate}" --doms="1 1 0 0" --rmdir
+##${TASK_PROG} --start="${BegDate}" --end="${EndDate}" --doms="1 1 0 0"
+[ $? -ne 0 ] && TaskError "${TASK_PROG}"
+
+exit 0
+###########################################################
+##### PROCESSING STAGE (ACTUAL MODEL SIMULATION)
+###########################################################
+
+###########################################################
+##### Run the model
+TASK_PROG=run-forecast.sh
+TaskFound "${TASK_PROG}"
+
+echo "----- Running the simulation for the current forecast."
+echo "        Running the jobs defined in \"${TASK_PROG}\" in parallel"
+echo "        and waiting for them to finish ..."
+
+#${TASK_PROG} -i coupling.in -host hosts_openmpi-ib -c "${MODE_STR:-}" \
+#             -date1 "${BegDate}" -date2 "${EndDate}" -dat "${DataDir}"
+${TASK_PROG} -ini -i coupling.in -host hosts_openmpi-ib -c "${MODE_STR:-}" \
+             -date1 "${BegDate}" -date2 "${EndDate}" -dat "${DataDir}"
+[ $? -ne 0 ] && TaskError "${TASK_PROG}"
+#exit 0
+###########################################################
+##### POST-PROCESSING STAGE
+###########################################################
+
+###########################################################
+##### Create the geo-referenced and other NetCDF files from
+##### the various models outputs
+TASK_PROG=make_datafiles_geo.sh
+TaskFound "${TASK_PROG}"
+
+${TASK_PROG} --start="${BegDate}" --end="${EndDate}" --doms="1 1 0 0"
+[ $? -ne 0 ] && TaskError "${TASK_PROG}"
+#exit 0
+###########################################################
+##### Create the forecast map images and plots from
+##### the various models outputs
+TASK_PROG=make_datamaps.sh
+TaskFound "${TASK_PROG}"
+
+${TASK_PROG} --start="${BegDate}" --end="${EndDate}" --doms="1 1 0 0" --rmdir
+[ $? -ne 0 ] && TaskError "${TASK_PROG}"
+#exit 0
+###########################################################
+##### Generate all the required data files for the web interfaces
+TASK_PROG=make_webfiles.sh
+TaskFound "${TASK_PROG}"
+
+${TASK_PROG} --start="${FcastDate}" --end="${EndDate}" --doms="1 1 0 0" --rmdir
+[ $? -ne 0 ] && TaskError "${TASK_PROG}"
+#exit 0
+###########################################################
+##### Rotate the forecasts (including the data) and try to keep
+##### only the latest ones (see at the top of rotate_forecasts.sh)
+TASK_PROG=rotate_forecasts.sh
+TaskFound "${TASK_PROG}"
+
+${TASK_PROG}
+[ $? -ne 0 ] && TaskError "${TASK_PROG}"
+
+exit 0

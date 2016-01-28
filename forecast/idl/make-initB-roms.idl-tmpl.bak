@@ -1,0 +1,568 @@
+; PROGRAM :: Make-InitB-ROMS
+;   Creates the initialization field for ROMS from the HYCOM
+;   (global or regional) NetCDF data files
+;   The interpolation is performed horizontally using the
+;   bi-linear interpolation and vertically using a combination of
+;   spline/linear interpolation.
+;   This is a much faster program than Make-Init-ROMS (suggested)
+
+;*******************************************************************************
+; START THE MAIN PROGRAM
+;*******************************************************************************
+
+CAST_ROOT  = ''
+CAST_BATH  = ''
+CAST_PLOTS = ''
+CAST_OUT   = ''
+
+; This is for subsetting the hycom bathymetry (if global is used)
+HC_IDXI0 = -1
+HC_IDXI1 = -1
+HC_IDXJ0 = -1
+HC_IDXJ1 = -1
+
+CPU, TPOOL_NTHREADS = 1
+
+
+idl_ERRCODE = 0
+catch, idl_ERRCODE
+if (idl_ERRCODE ne 0) then begin
+  catch, /cancel
+  help, /LAST_MESSAGE
+  exit,  /NO_CONFIRM, STATUS = idl_ERRCODE
+endif
+
+
+BEG_TIMECOUNT = systime(/seconds)
+
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+; Initialize.
+@proj_setup
+
+;REGION = 'Gulf of Mexico'
+REGION = 'GoM (ocean)'
+
+; ----- initialization date for the current simulation
+INIT_DATE = '2010/04/01 00:00:00'
+
+; ----- DOM_NUMB represents the domain number in the input data
+;       data are stored in one file per domain ('', d01, d02, ...)
+DOM_NUMB = 1
+
+dnumber = (n_elements(DOM_NUMB) gt 0) ? fix(DOM_NUMB) : 0
+dom_str = (dnumber gt 0) ? string(dnumber, format = '("_d", i2.2)') : ''
+
+; ----- USE_CDL, flag to use or not the generated "cdl" file
+; 1 = to turn on to use the internally generated CDL file
+;     when writing to the NetCDF file
+; 0 = to write directly to the NetCDF file
+use_cdl = 1
+
+; ----- INP_DIR directory for the input data files
+;       OUT_DIR directory for the output data files
+INP_DIR = rootDIR
+OUT_DIR = rootDIR
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+; SET VARIOUS VARIABLES USED IN THE INTERPOLATIONS
+; the window used in boxcar averaging (default: 11)
+smooth_window = 21
+
+; maximum number of iterations for all filling methods (default: 1000)
+;max_fill_iter = 100
+
+miss_val = !VALUES.F_NAN
+
+; 1 = to turn on all debugging messages
+; 0 = to turn off all debugging messages
+debug = 0
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+GetParams, REGION, PlotSize = 1150, Map_Coords = map_coords, $
+           Map_Proj = map_proj
+
+; For the appropriate lake/region to use please check first the file
+; proj_vars.pro and call first the GetParams procedure
+outstr = '/bin/echo -e ' + $
+         '"\n' + String('Running for: ', $
+                        Strupcase(RegionName), format = '(a, 1x, a)') + $
+         '\n" > /dev/stderr'
+Spawn, outstr
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+Get_TimeStamp, INIT_DATE, INIT_YR, INIT_MO, INIT_DA, INIT_HR, INIT_MN, INIT_SC, $
+               YEAR_DAY = INIT_DAYOFYR, $
+               JULIAN   = INIT_JULDAY, ROMS_STAMP = file_stamp
+
+if (INIT_JULDAY lt REF_JULDAY) then $
+  message, 'INIT_DATE should be greater or equal to REF_DATE'
+
+yr_str = strtrim(string(INIT_YR, format = '(i4.4)'), 2)
+
+; ROMS GoM bathymetry
+roms_bath = FilePath('romsgrd' + dom_str + '.nc', Root_Dir = bathDIR)
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+; Read the HYCOM bathymetry first ...
+; Both GoM/ROMS and GoM/HYCOM grids are defined on the same Horiz. Datum
+; and the same Sphere Radius.
+
+print, 'Reading the bathymetry file: ' + hyc_bath
+Ncdf_ReadBath_Hycom, hyc_bath
+
+hyc_longrid = longrid
+hyc_latgrid = latgrid
+hyc_dgrid   = dgrid
+hyc_mgrid   = mgrid
+hyc_IPNTS   = IPNTS
+hyc_JPNTS   = JPNTS
+void = ChkForMask(hyc_mgrid, 1, hyc_WCELLSIDX, hyc_WCELLS, $
+                  COMPLEMENT = hyc_LCELLSIDX, NCOMPLEMENT = hyc_LCELLS)
+hyc_TCELLS = hyc_IPNTS * hyc_JPNTS
+if ( (n_elements(HC_IDXI0) ne 0) and  (n_elements(HC_IDXI1) ne 0) and $
+     (n_elements(HC_IDXJ0) ne 0) and  (n_elements(HC_IDXJ1) ne 0) ) then begin
+  if ( (HC_IDXI0 ge 0) and  (HC_IDXI1 ge 0) and $
+       (HC_IDXJ0 ge 0) and  (HC_IDXJ1 ge 0) ) then begin
+    hyc_longrid = longrid[HC_IDXI0:HC_IDXI1, HC_IDXJ0:HC_IDXJ1]
+    hyc_latgrid = latgrid[HC_IDXI0:HC_IDXI1, HC_IDXJ0:HC_IDXJ1]
+    hyc_dgrid   = dgrid[HC_IDXI0:HC_IDXI1, HC_IDXJ0:HC_IDXJ1]
+    hyc_mgrid   = mgrid[HC_IDXI0:HC_IDXI1, HC_IDXJ0:HC_IDXJ1]
+    hyc_IPNTS   = (size(hyc_mgrid, /DIMENSIONS))[0]
+    hyc_JPNTS   = (size(hyc_mgrid, /DIMENSIONS))[1]
+    void = ChkForMask(hyc_mgrid, 1, hyc_WCELLSIDX, hyc_WCELLS, $
+                      COMPLEMENT = hyc_LCELLSIDX, NCOMPLEMENT = hyc_LCELLS)
+    hyc_TCELLS = hyc_IPNTS * hyc_JPNTS
+  endif
+endif
+
+; need this because we need to undefine common bathymetry parameters
+; found in both Ncdf_ReadBath_Hycom and Ncdf_ReadBath_Roms procedures
+Undefine_Hycom_params, /BATH
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+; Read the GOM bathymetry next ...
+; Both GoM/ROMS and GoM/HYCOM grids are defined on the same Horiz. Datum
+; and the same Sphere Radius.
+
+print, 'Reading the bathymetry file: ' + roms_bath
+Ncdf_ReadBath_Roms, roms_bath
+
+KPNTS = SLAY
+s_rho = KPNTS
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+; Read the HYCOM data ...
+
+f_year = strtrim(string(INIT_YR, format = '(i4.4)'), 2)
+
+;fstr   = string(INIT_YR, '_', INIT_DAYOFYR, '_', INIT_HR, format = '(i4.4, a1, i3.3, a1, i2.2)')
+;f_name = 'archv.' + fstr + '_3z' + '.nc'
+
+fstr   = string(INIT_YR, INIT_MO, INIT_DA, '_', INIT_HR, INIT_MN, format = '(i4.4, 2i2.2, a1, 2i2.2)')
+f_name = 'hycom_' + fstr + '.nc'
+
+hyc_inp = FilePath(f_name, Root_Dir = INP_DIR)
+
+print, 'Reading the input file: ' + hyc_inp
+
+Ncdf_Hycom_ReadOutput, hyc_inp, MASK = hyc_mgrid, $
+                       LON_OUT = hyc_datlons, LAT_OUT = hyc_datlats
+
+if ( (array_equal(hyc_longrid, hyc_datlons) ne 1) or $
+     (array_equal(hyc_latgrid, hyc_datlats) ne 1) ) then begin
+  message, 'found discrepancies in Longitude/Latitude in the files:', /INFORMATIONAL
+  message, '   Bath: ' + hyc_bath, /INFORMATIONAL
+  message, '   Data: ' + hyc_inp, /INFORMATIONAL
+  message, 'exiting ...'
+endif
+
+HYC_KPNTS = n_zdeps
+hyc_depth = zdeps
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+time0 = systime(/seconds)
+timeTOL = 0.0D
+
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+; Fill the HYCOM missing data (including the land points)
+; at each HYCOM z-level.
+; This is a pre-prossecing step (values are not changed at
+; the locations with existing data.
+
+print, 'Filling the missing data in the Input Fields ...'
+time1 = systime(/seconds)
+
+print, '   Filling the missing sea surface height data ...'
+ssh = VL_FillData(ssh, miss_val, $
+         BOXCAR = meth_boxcar,   $
+         FLAP   = meth_flap,     $
+         SMWIN  = smooth_window, $
+         ITER   = max_fill_iter, $
+         TOL = 0.001,            $
+         DEBUG = debug)
+
+print, '   Filling the missing salinity data ...'
+salt[*, *, *] = VL_FillData(salt, miss_val, $
+                   BOXCAR = meth_boxcar,    $
+                   FLAP   = meth_flap,      $
+                   SMWIN  = smooth_window,  $
+                   ITER   = max_fill_iter,  $
+                   TOL = 0.01,              $
+                   DEBUG = debug)
+
+print, '   Filling the missing temperature data ...'
+temp[*, *, *] = VL_FillData(temp, miss_val, $
+                   BOXCAR = meth_boxcar,    $
+                   FLAP   = meth_flap,      $
+                   SMWIN  = smooth_window,  $
+                   ITER   = max_fill_iter,  $
+                   TOL = 0.01,              $
+                   DEBUG = debug)
+
+print, '   Filling the missing u-velocity data ...'
+uvel[*, *, *] = VL_FillData(uvel, miss_val, $
+                   BOXCAR = meth_boxcar,    $
+                   FLAP   = meth_flap,      $
+                   SMWIN  = smooth_window,  $
+                   ITER   = max_fill_iter,  $
+                   TOL = 0.001,             $
+                   DEBUG = debug)
+
+print, '   Filling the missing v-velocity data ...'
+vvel[*, *, *] = VL_FillData(vvel, miss_val, $
+                   BOXCAR = meth_boxcar,    $
+                   FLAP   = meth_flap,      $
+                   SMWIN  = smooth_window,  $
+                   ITER   = max_fill_iter,  $
+                   TOL    = 0.001,          $
+                   DEBUG = debug)
+
+time2 = systime(/seconds)
+theTIME = time2 - time1
+timeTOL = timeTOL + theTIME
+if (debug gt 0) then begin
+  if (theTIME le 60.0) then begin
+    print, 'Filling Data Elapsed Time: ', theTIME, 's', format = '(a, f7.2, 2x, a1)'
+  endif else begin
+    print, 'Filling Data Elapsed Time: ', theTIME / 60.0, 'min', format = '(a, f7.2, 2x, a3)'
+  endelse
+endif
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+; INTERPOLATE HORIZONTALLY
+; Regrid the variables to the GoM grid at the same HYCOM levels
+; 0 idx in levels is defined at the free surface
+; At this point, all variables are defined at RHO-points
+
+print, 'Interpolating the Input Fields at the GOM/ROMS Domain ...'
+print, '   Starting the horizontal interpolations ...'
+time1 = systime(/seconds)
+
+hlon = reform(hyc_longrid[*, 0])
+hlat = reform(hyc_latgrid[0, *])
+glon = reform(longrid[*, 0])
+glat = reform(latgrid[0, *])
+
+; Sea Surface Height
+gom_zeta = VL_ReGrid(ssh, hlon, hlat, glon, glat)
+
+; Salinity
+gom_salt_zlev = VL_ReGrid(salt, hlon, hlat, glon, glat)
+
+; Temperature
+gom_temp_zlev = VL_ReGrid(temp, hlon, hlat, glon, glat)
+
+; U-velocity (at u points)
+gom_uvel_zlev = Rho2U( VL_ReGrid(uvel, hlon, hlat, glon, glat) )
+
+; V-velocity (at v points)
+gom_vvel_zlev = Rho2V( VL_ReGrid(vvel, hlon, hlat, glon, glat) )
+
+time2 = systime(/seconds)
+theTIME = time2 - time1
+timeTOL = timeTOL + theTIME
+if (debug gt 0) then begin
+  if (theTIME le 60.0) then begin
+    print, 'Horizontal Interpolation Elapsed Time: ', theTIME, 's', format = '(a, f7.2, 2x, a1)'
+  endif else begin
+    print, 'Horizontal Interpolation Elapsed Time: ', theTIME / 60.0, 'min', format = '(a, f7.2, 2x, a3)'
+  endelse
+endif
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+; INTERPOLATE VERTICALLY
+
+; SET VARIOUS ARRAYS USED IN THE INTERPOLATIONS
+; 3D variables
+gom_salt = make_array([size(mask_rho, /DIMENSIONS), KPNTS], /DOUBLE, VALUE = 0)
+gom_temp = gom_salt
+gom_uvel = make_array([size(mask_u, /DIMENSIONS), KPNTS], /DOUBLE, VALUE = 0)
+gom_vvel = make_array([size(mask_v, /DIMENSIONS), KPNTS], /DOUBLE, VALUE = 0)
+
+; ---------- SALINITY and TEMPERATURE
+print, '   Starting the vertical interpolations for Salinity/Temperature at RHO-Points ...'
+time1 = systime(/seconds)
+
+; Define S-curves for vertical coordinate ...
+; ROMS k = 1 level is at the bottom and k = kmax at the free surface
+; dgrid and mgrid (= mask_rho) should always be defined at RHO-Points
+print, '   Computing the sigma levels ...'
+SGrid, dgrid, KPNTS, mgrid,                                 $
+       Vtran = Vtransform, Vstre = Vstretching,             $
+       s_theta = STHETA, b_theta = BTHETA, tcline = TCLINE, $
+       HC = hc,                                             $
+       r_zarr = r_zgrid, w_zarr = w_zgrid,                  $
+       w_s = ws, w_cs = wcs,                                $
+       r_s = rs, r_cs = rcs,                                $
+       OUT_DEP = dep_grid
+
+dims = size(dep_grid, /DIMENSIONS)
+IFLD = dims[0]
+JFLD = dims[1]
+for jj = 0L, JFLD - 1 do begin
+  for ii = 0L, IFLD - 1 do begin
+
+    ; land points have mask 0
+    if (ChkForMask(mask_rho[ii, jj], 0) gt 0) then continue
+
+    ; hycom data are written from top to bottom (depths are positive down)
+    ; roms data are written from bottom to top (depths are negative down)
+    ; the function VL_StdZ2SigZ takes care of this ...
+    gom_zlevs = r_zgrid[ii, jj, *]
+
+    ; ---------- SALINITY
+    tmpvals = gom_salt_zlev[ii, jj, *]
+    tmpvals = VL_StdZ2SigZ(tmpvals, hyc_depth, gom_zlevs, dep_grid[ii, jj], $
+                           LSQUADRATIC = use_lsquad, $
+                           QUADRATIC   = use_quad,   $
+                           SPLINE      = use_spline)
+    if (min(where(finite(tmpvals, /NAN) eq 1)) ge 0) then message, 'FOUND NAN VALUE in SALT'
+
+    gom_salt[ii, jj, *] = tmpvals
+
+    ; ---------- TEMPERATURE
+    tmpvals = gom_temp_zlev[ii, jj, *]
+    tmpvals = VL_StdZ2SigZ(tmpvals, hyc_depth, gom_zlevs, dep_grid[ii, jj], $
+                           LSQUADRATIC = use_lsquad, $
+                           QUADRATIC   = use_quad,   $
+                           SPLINE      = use_spline)
+    if (min(where(finite(tmpvals, /NAN) eq 1)) ge 0) then message, 'FOUND NAN VALUE in TEMP'
+
+    gom_temp[ii, jj, *] = tmpvals
+  endfor ; IFLD
+endfor ; JFLD
+
+; ---------- U-VELOCITY
+print, '   Starting the vertical interpolations for U-velocity at U-Points ...'
+
+; Define S-curves for vertical coordinate ...
+; ROMS k = 1 level is at the bottom and k = kmax at the free surface
+; dgrid and mgrid (= mask_rho) should always be defined at RHO-Points
+print, '   Computing the sigma levels ...'
+SGrid, dgrid, KPNTS, mgrid,                                 $
+       Vtran = Vtransform, Vstre = Vstretching,             $
+       s_theta = STHETA, b_theta = BTHETA, tcline = TCLINE, $
+       r_zarr = r_zgrid, w_zarr = w_zgrid,                  $
+       OUT_DEP = dep_grid, /ULOC
+
+dims = size(dep_grid, /DIMENSIONS)
+IFLD = dims[0]
+JFLD = dims[1]
+for jj = 0L, JFLD - 1 do begin
+  for ii = 0L, IFLD - 1 do begin
+
+    ; land points have mask 0
+    if (ChkForMask(mask_u[ii, jj], 0) gt 0) then continue
+
+    ; hycom data are written from top to bottom (depths are positive down)
+    ; roms data are written from bottom to top (depths are negative down)
+    ; the function VL_StdZ2SigZ takes care of this ...
+    gom_zlevs = r_zgrid[ii, jj, *]
+
+    tmpvals = gom_uvel_zlev[ii, jj, *]
+    tmpvals = VL_StdZ2SigZ(tmpvals, hyc_depth, gom_zlevs, dep_grid[ii, jj], $
+                           VAL_BOUND   = 0,          $
+                           LSQUADRATIC = use_lsquad, $
+                           QUADRATIC   = use_quad,   $
+                           SPLINE      = use_spline)
+    if (min(where(finite(tmpvals, /NAN) eq 1)) ge 0) then message, 'FOUND NAN VALUE in U-VEL'
+    
+    gom_uvel[ii, jj, *] = tmpvals
+  endfor ; IFLD
+endfor ; JFLD
+
+; calculate ubar
+gom_ubar = FieldBar(gom_uvel, dep_grid, ZSPACING = - w_zgrid)
+idxNAN = where(finite(gom_ubar) eq 0, countNAN)
+if (countNAN ne 0) then gom_ubar[idxNAN] = 0
+; ----------
+
+; ---------- V-VELOCITY
+print, '   Starting the vertical interpolations for V-velocity at V-Points ...'
+
+; Define S-curves for vertical coordinate ...
+; ROMS k = 1 level is at the bottom and k = kmax at the free surface
+; dgrid and mgrid (= mask_rho) should always be defined at RHO-Points
+print, '   Computing the sigma levels ...'
+SGrid, dgrid, KPNTS, mgrid,                                 $
+       Vtran = Vtransform, Vstre = Vstretching,             $
+       s_theta = STHETA, b_theta = BTHETA, tcline = TCLINE, $
+       r_zarr = r_zgrid, w_zarr = w_zgrid,                  $
+       OUT_DEP = dep_grid, /VLOC
+
+dims = size(dep_grid, /DIMENSIONS)
+IFLD = dims[0]
+JFLD = dims[1]
+for jj = 0L, JFLD - 1 do begin
+  for ii = 0L, IFLD - 1 do begin
+
+    ; land points have mask 0
+    if (ChkForMask(mask_v[ii, jj], 0) gt 0) then continue
+
+    ; hycom data are written from top to bottom (depths are positive down)
+    ; roms data are written from bottom to top (depths are negative down)
+    ; the function VL_StdZ2SigZ takes care of this ...
+    gom_zlevs = r_zgrid[ii, jj, *]
+
+    tmpvals = gom_vvel_zlev[ii, jj, *]
+    tmpvals = VL_StdZ2SigZ(tmpvals, hyc_depth, gom_zlevs, dep_grid[ii, jj], $
+                           VAL_BOUND   = 0,          $
+                           LSQUADRATIC = use_lsquad, $
+                           QUADRATIC   = use_quad,   $
+                           SPLINE      = use_spline)
+    if (min(where(finite(tmpvals, /NAN) eq 1)) ge 0) then message, 'FOUND NAN VALUE in V-VEL'
+    
+    gom_vvel[ii, jj, *] = tmpvals
+  endfor ; IFLD
+endfor ; JFLD
+
+; calculate vbar
+gom_vbar = FieldBar(gom_vvel, dep_grid, ZSPACING = - w_zgrid)
+idxNAN = where(finite(gom_vbar) eq 0, countNAN)
+if (countNAN ne 0) then gom_vbar[idxNAN] = 0
+; ----------
+
+; ---------- make sure that at land masked points the variables are set to zero
+gom_zeta = ZeroFloatFix( gom_zeta * mask_rho )
+gom_ubar = ZeroFloatFix( gom_ubar * mask_u )
+gom_vbar = ZeroFloatFix( gom_vbar * mask_v )
+
+; ---------- ; make sure that at land masked points the variables are set to zero
+for k = 0L, KPNTS - 1 do begin
+  gom_salt[*, *, k] = ZeroFloatFix( reform(gom_salt[*, *, k]) * mask_rho )
+  gom_temp[*, *, k] = ZeroFloatFix( reform(gom_temp[*, *, k]) * mask_rho )
+  gom_uvel[*, *, k] = ZeroFloatFix( reform(gom_uvel[*, *, k]) * mask_u )
+  gom_vvel[*, *, k] = ZeroFloatFix( reform(gom_vvel[*, *, k]) * mask_v )
+endfor
+
+time2 = systime(/seconds)
+theTIME = time2 - time1
+timeTOL = timeTOL + theTIME
+if (debug gt 0) then begin
+  if (theTIME le 60.0) then begin
+    print, 'Vertical Interpolation Elapsed Time: ', theTIME, 's', format = '(a, f7.2, 2x, a1)'
+  endif else begin
+    print, 'Vertical Interpolation Elapsed Time: ', theTIME / 60.0, 'min', format = '(a, f7.2, 2x, a3)'
+  endelse
+endif
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+if (timeTOL le 60.0) then begin
+  print
+  print, 'Total Elapsed Time: ', timeTOL, 's', format = '(a, f7.2, 2x, a1)'
+  print
+endif else begin
+  print
+  print, 'Total Elapsed Time: ', timeTOL / 60.0, 'min', format = '(a, f7.2, 2x, a3)'
+  print
+endelse
+
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+; WRITE THE RESULTS TO THE OUTPUT FILE
+init_str = 'romsinit' + dom_str + '_' + file_stamp
+out_file = FilePath(init_str + '.nc', Root_Dir = OUT_DIR)
+
+make_dir, OUT_DIR
+print, 'Writting the data to the output file: ' + out_file
+
+if (readFILE(out_file)) then begin
+  ;FILE_MOVE, out_file, FilePath(init_str + '-OLD.nc', Root_Dir = OUT_DIR), /OVERWRITE
+  FILE_DELETE, out_file, /ALLOW_NONEXISTENT
+endif
+
+; define the variables
+use_cdl = (use_cdl gt 0) ? 1 : 0
+
+myTYPE   = gom_pfx + ' initialization file'
+myTITLE  = 'Gulf of Mexico ' + '1/' + strtrim(string(fix(1.0/DLON_MEAN)), 2) + ' degree grid'
+
+failFLG = Ncdf_VarDef_GomRoms_Init(out_file, IPNTS, JPNTS, KPNTS, $
+                                   REF_TIME = REF_DATE, $
+                                   TITLE = myTITLE,     $
+                                   TYPE = myTYPE,       $
+                                   CDL = cdl)
+
+if (failFLG eq 0) then begin
+  ; in days
+  rec_time = INIT_JULDAY - REF_JULDAY
+
+  ncid_init = ncdf_open(out_file, /WRITE)
+    ncdf_varput, ncid_init, ncdf_varid(ncid_init, 'ocean_time'), rec_time
+
+    ncdf_varput, ncid_init, ncdf_varid(ncid_init, 'spherical'), 1
+    ncdf_varput, ncid_init, ncdf_varid(ncid_init, 'Vtransform'), Vtransform
+    ncdf_varput, ncid_init, ncdf_varid(ncid_init, 'Vstretching'), Vstretching
+    ncdf_varput, ncid_init, ncdf_varid(ncid_init, 'theta_s'), STHETA
+    ncdf_varput, ncid_init, ncdf_varid(ncid_init, 'theta_b'), BTHETA
+    ncdf_varput, ncid_init, ncdf_varid(ncid_init, 'Tcline'), TCLINE
+    ncdf_varput, ncid_init, ncdf_varid(ncid_init, 's_rho'), rs
+    ncdf_varput, ncid_init, ncdf_varid(ncid_init, 's_w'), ws
+    ncdf_varput, ncid_init, ncdf_varid(ncid_init, 'Cs_r'), rcs
+    ncdf_varput, ncid_init, ncdf_varid(ncid_init, 'Cs_w'), wcs
+
+    ncdf_varput, ncid_init, ncdf_varid(ncid_init, 'zeta'), gom_zeta
+    ncdf_varput, ncid_init, ncdf_varid(ncid_init, 'ubar'), gom_ubar
+    ncdf_varput, ncid_init, ncdf_varid(ncid_init, 'vbar'), gom_vbar
+
+    ncdf_varput, ncid_init, ncdf_varid(ncid_init, 'u'), gom_uvel
+    ncdf_varput, ncid_init, ncdf_varid(ncid_init, 'v'), gom_vvel
+    ncdf_varput, ncid_init, ncdf_varid(ncid_init, 'temp'), gom_temp
+    ncdf_varput, ncid_init, ncdf_varid(ncid_init, 'salt'), gom_salt
+
+  ncdf_close, ncid_init
+endif
+
+END_TIMECOUNT = systime(/seconds)
+theTIME = END_TIMECOUNT - BEG_TIMECOUNT
+if (theTIME le 60.0) then begin
+  print
+  print, 'Initial conditions generation time: ', theTIME, 's', format = '(a, f7.2, 2x, a1)'
+  print
+endif else begin
+  print
+  print, 'Initial conditions generation time: ', theTIME / 60.0, 'min', format = '(a, f7.2, 2x, a3)'
+  print
+endelse
+
+end

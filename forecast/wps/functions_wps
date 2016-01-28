@@ -1,0 +1,627 @@
+# Author:  Panagiotis Velissariou <pvelissariou@fsu.edu>
+#                                 <velissariou.1@osu.edu>
+# Version: 1.1
+#
+# Version - 1.1 Fri Apr 24 2015
+# Version - 1.0 Sun Aug 03 2014
+
+
+#------------------------------------------------------------
+# SOURCE THE UTILITY FUNCTIONS
+if [ -f functions_common ]; then
+  source functions_common
+else
+  echo " ### ERROR:: in functions_wps"
+  echo "     Cannot locate the file: functions_common"
+  echo "     Exiting now ..."
+  echo
+  exit 1
+fi
+#------------------------------------------------------------
+
+
+# -------------------------------------------------------
+# ParseArgsWps()
+# Usage:      ParseArgsWps args
+# Parameters: args = the script options
+# Returns:    0
+# Echoes:     NONE
+#
+# Gets the supplied options to the script.
+# -------------------------------------------------------
+ParseArgsWps()
+{
+  local opt_opt opt_arg
+
+  local my_SIMBEG my_SIMEND
+  local my_WpsDir my_GEOG_DIR my_DATA_DIR my_DATA_INTERVAL
+  local my_DATA_TYPE my_DATE_EXPR my_DATA_PFX my_DATA_SFX
+  local my_VTABLE_SFX my_PRINT
+  local my_MODFILES my_NPROCS my_HOSTFILE my_REMOVE my_USE_PARALLEL
+
+  while test $# -gt 0; do
+    case "${1}" in
+      --*=*)
+        opt_opt="`toLOWER "\`echo "${1}" | sed 's/=.*//'\`"`"
+        opt_arg="`echo "${1}" | sed 's/.*=//'`"
+        ;;
+      -*)
+        opt_opt="`toLOWER "-${1}"`"
+        opt_opt="`echo "${opt_opt}" | sed -e 's/^--/-/'`"
+        opt_arg="`echo "${2}" | sed -e 's/^-.*//'`"
+        ;;
+      *)
+        opt_opt="`toLOWER "${1}"`"
+        opt_arg="${opt_opt}"
+        ;;
+    esac
+
+    case "${opt_opt}" in
+      --wpsdir)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_WpsDir="${opt_arg}"
+          fi
+        ;;
+      --start)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_SIMBEG="${opt_arg}"
+          fi
+        ;;
+      --end)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_SIMEND="${opt_arg}"
+          fi
+        ;;
+      --geog)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_GEOG_DIR="${opt_arg}"
+          fi
+        ;;
+      --datdir)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_DATA_DIR="${opt_arg}"
+          fi
+        ;;
+      --datint)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_DATA_INTERVAL="${opt_arg}"
+          fi
+        ;;
+      --dattype)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_DATA_TYPE="${opt_arg}"
+          fi
+        ;;
+      --datexpr)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_DATE_EXPR="${opt_arg}"
+          fi
+        ;;
+      --datpfx)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_DATA_PFX="${opt_arg}"
+          fi
+        ;;
+      --datsfx)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_DATA_SFX="${opt_arg}"
+          fi
+        ;;
+      --vsfx)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_VTABLE_SFX="${opt_arg}"
+          fi
+        ;;
+      -m|--mods)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_MODFILES="${opt_arg}"
+          fi
+        ;;
+      --nproc)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_NPROCS="`getPosInteger ${opt_arg}`"
+            [ "${my_NPROCS:-0}" -eq 0 ] && my_NPROCS=
+          fi
+        ;;
+      --host)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_HOSTFILE="${opt_arg}"
+          fi
+        ;;
+      --rmdir)
+          my_REMOVE=1
+          if [ "X${opt_arg}" != "X" ]; then
+            my_REMOVE="${opt_arg}"
+          fi
+        ;;
+      --par)
+          my_USE_PARALLEL=1
+          if [ "X${opt_arg}" != "X" ]; then
+            my_USE_PARALLEL="${opt_arg}"
+          fi
+        ;;
+      -h|--help)
+          wps_usage
+        ;;
+      -p|--print)
+          my_PRINT=1
+        ;;
+      *) ;; # DEFAULT
+    esac
+    shift
+  done
+
+  ##### The directory where the meteorological data are stored
+  [ -n "${my_WpsDir:+1}" ] && \
+    export WpsDir="${my_WpsDir}"
+
+  ##### The begin of the simulation date
+  [ -n "${my_SIMBEG:+1}" ] && \
+    export SimBeg="${my_SIMBEG}"
+
+  ##### The end of the simulation date
+  [ -n "${my_SIMEND:+1}" ] && \
+    export SimEnd="${my_SIMEND}"
+
+  ##### The directory where the WRF/WPS geo database is located
+  [ -n "${my_GEOG_DIR:+1}" ] && \
+    export GEOG_DIR="${my_GEOG_DIR}"
+
+  ##### The directory where the meteorological data are stored
+  [ -n "${my_DATA_DIR:+1}" ] && \
+    export DATA_DIR="${my_DATA_DIR}"
+
+  ##### The data interval between records
+  [ -n "${my_DATA_INTERVAL:+1}" ] && \
+      export DATA_INTERVAL="${my_DATA_INTERVAL}"
+
+  ##### The type of the data e.g., GFS ...
+  [ -n "${my_DATA_TYPE:+1}" ] && \
+    export DATA_TYPE="${my_DATA_TYPE}"
+
+  ##### The date regular expression to be used when searching
+  ##### for datafiles (one or more of: YMDH YMD MDYH MDY DMYH DMY YJH YJ)
+  [ -n "${my_DATE_EXPR:+1}" ] && \
+    export DATE_EXPR="${my_DATE_EXPR}"
+
+  ##### The prefix/suffix that identifies the data filenames
+  [ -n "${my_DATA_PFX:+1}" ] && \
+    export DATA_PFX="${my_DATA_PFX}"
+
+  [ -n "${my_DATA_SFX:+1}" ] && \
+    export DATA_SFX="${my_DATA_SFX}"
+    
+  ##### The suffix that identifies a VTable (ie, the extension)
+  [ -n "${my_VTABLE_SFX:+1}" ] && \
+    export VTABLE_SFX="${my_VTABLE_SFX}"
+
+  ##### The number of processors to be used
+  [ -n "${my_MODFILES:+1}" ] && \
+    export MODFILES="${my_MODFILES}"
+
+  ##### The number of processors to be used
+  [ -n "${my_NPROCS:+1}" ] && \
+    export NPROCS="${my_NPROCS}"
+
+  ##### The hostfile (machinefile) to be used if any
+  [ -n "${my_HOSTFILE:+1}" ] && \
+    export HOSTFILE="${my_HOSTFILE}"
+
+  ##### The remove directory flag
+  [ -n "${my_REMOVE:+1}" ] && \
+    export REMOVE_DIR=${my_REMOVE}
+
+  ##### The parallel flag
+  [ -n "${my_USE_PARALLEL:+1}" ] && \
+    export USE_PARALLEL=${my_USE_PARALLEL}
+
+  ##### The print flag
+  [ -n "${my_PRINT:+1}" ] && \
+    export WPS_PRINT=${my_PRINT}
+
+  return 0
+}
+
+wps_usage()
+{
+  echo
+  echo "Usage: \"${0}\" [option1[=option_value1]] [option2[=option_value2]] ..."
+  echo
+
+  echo "               AVAILABLE OPTIONS"
+  echo " In addition to passing the configuration parameters/variables using"
+  echo "   the available options of this script, some of these configuration"
+  echo "   parameters/variables can also be obtained from the environment (wps_env file)."
+  echo " Additional parameters are set in the script (see first lines of the script)."
+  echo " For a further explanation of all these variables, see the script source code."
+  echo
+
+  echo -n "--help|-h   "; echo -n "Show this help screen and then exit."; echo
+  echo -n "--print|-p  "; echo -n "Print the variable values set and then exit."; echo
+  echo -n "--start     "; echo -n "Define the beginning of the simulation."; echo
+  echo    "             FORMAT : YYYY/MM/DD [HH:MN:SC] or YYYY-MM-DD [HH:MN:SC]."
+  echo    "             MANDATORY: yes"
+  echo    "             DEFAULT: not set"
+  echo -n "--end       "; echo -n "Define the end of the simulation."; echo
+  echo    "             FORMAT : YYYY/MM/DD [HH:MN:SC] or YYYY-MM-DD [HH:MN:SC]."
+  echo    "             MANDATORY: yes"
+  echo    "             DEFAULT: not set"
+  echo -n "--geog      "; echo -n "Define the path to the geogrid database files."; echo
+  echo    "             MANDATORY: yes"
+  echo    "             DEFAULT: DATA-GEOG"
+  echo -n "--doms      "; echo -n "Define the max number of WRF domains."; echo
+  echo    "             MANDATORY: no"
+  echo    "             DEFAULT  : 1 (there are no nests, only one domain)"
+  echo -n "--datdir    "; echo -n "Define the path(s) to the grib datafiles."; echo
+  echo    "             Multiple directories can be specified if the different datasets are"
+  echo    "             stored in different locations, via:"
+  echo    "             --datdir=\"dir1 dir2 ...\""
+  echo    "             If one directory path is specified then all data are assumed"
+  echo    "             to be in this directory."
+  echo    "             It is assumed that each supplied directory corresponds one to one"
+  echo    "             to the data types specified."
+  echo    "             MANDATORY: yes"
+  echo    "             DEFAULT: Data"
+  echo -n "--datint    "; echo -n "Data time interval of the consecutive atmospheric data files in hours."; echo
+  echo    "             Multiple data types can be defined via:"
+  echo    "             --datint=6"
+  echo    "             MANDATORY: no"
+  echo    "             DEFAULT: 6"
+  echo -n "--dattype   "; echo -n "Data types to be used in the generation of the WRF conditions."; echo
+  echo    "             Multiple data types can be defined via:"
+  echo    "             --dattype=\"GFS SST ...\""
+  echo    "             MANDATORY: yes"
+  echo    "             DEFAULT: GFS"
+  echo -n "--datexpr   "; echo -n "The date expression that appears in the data filenames."; echo
+  echo    "             One or more of: YMDH YMD MDYH MDY DMYH DMY YJH YJ"
+  echo    "             Multiple date expressions can be defined via:"
+  echo    "             --datexpr=\"YMD YJ ...\""
+  echo    "             Up to number of data types are used."
+  echo    "             If one value is supplied then it is applied for all data types."
+  echo    "             MANDATORY: no"
+  echo    "             DEFAULT: YMDH"
+  echo -n "--datpfx    "; echo -n "Define the prefix(es) in the data filenames."; echo
+  echo    "             Multiple prefix(es) can be specified via:"
+  echo    "             --datpfx=\"pfx1 pfx2 ...\""
+  echo    "             Correspond to datatypes defined (in sequence one-to-one)."
+  echo    "             MANDATORY: yes"
+  echo    "             DEFAULT: gfs_"
+  echo -n "--datsfx    "; echo -n "Define the suffix(es) in the data filenames."; echo
+  echo    "             Multiple suffix(es) can be specified via:"
+  echo    "             --datsfx=\"sfx1 sfx2 ...\""
+  echo    "             Correspond to datatypes defined (in sequence one-to-one)."
+  echo    "             MANDATORY: no"
+  echo    "             DEFAULT: .gr (will search for *.gr* files)"
+  echo -n "--vsfx      "; echo -n "Define the suffix(es) to be used when searching for Vtable files."; echo
+  echo    "             Multiple suffix(es) can be specified via:"
+  echo    "             --vsfx=\"vsfx1 vsfx2 ...\""
+  echo    "             Correspond to datatypes defined (in sequence one-to-one)."
+  echo    "             MANDATORY: no"
+  echo    "             DEFAULT: not set (it can be determined internally)"
+  echo -n "-m|--mods   "; echo -n "Define the list of the environment modules necessary to run WPS (if needed)."; echo
+  echo    "             MANDATORY: no"
+  echo    "             DEFAULT  : not set"
+  echo -n "--nproc     "; echo -n "Set the number of CPUS to be used."; echo
+  echo    "             If it not set, the script itself will try to determine the number of cpus."
+  echo    "             MANDATORY: no"
+  echo    "             DEFAULT  : not set"
+  echo -n "--host      "; echo -n "The host file to be used for MPI caclulations."; echo
+  echo    "             MANDATORY: no"
+  echo    "             DEFAULT  : not set"
+  echo -n "--rmdir     "; echo -n "Set this option to remove the internally created work directories."; echo
+  echo    "             MANDATORY: no"
+  echo    "             DEFAULT  : 0 (do not remove work directories)"
+  echo -n "--par       "; echo -n "Use the GNU parallel program to parallelize the script tasks."; echo
+  echo    "             MANDATORY: no"
+  echo    "             DEFAULT  : 0 (do not use parallel)"
+
+  echo
+  exit 1
+}
+
+wps_print()
+{
+  echo
+  echo "               VALUES OF THE SCRIPT VARIABLES"
+  echo
+
+  echo "SimBeg             = ${SimBeg}"
+  echo "SimEnd             = ${SimEnd}"
+  echo "GEOG_DIR           = ${GEOG_DIR}"
+  echo "DATA_TYPE          = ${DATA_TYPE[*]}"
+  echo "VTABLE_SFX         = ${VTABLE_SFX[*]}"
+  echo "VTABLE_NAME        = ${VTABLE_NAME[*]}"
+  echo "DATA_DIR           = ${DATA_DIR[*]}"
+  echo "DATA_INTERVAL      = ${DATA_INTERVAL}"
+  echo "DATA_PFX           = ${DATA_PFX[*]}"
+  echo "DATE_EXPR          = ${DATE_EXPR[*]}"
+  echo "DATA_SFX           = ${DATA_SFX[*]}"
+  echo "MODFILES           = ${MODFILES}"
+  echo "NPROCS             = ${NPROCS}"
+  echo "HOSTFILE           = ${HOSTFILE}"
+  echo "REMOVE_DIR         = ${REMOVE_DIR}"
+  echo "USE_PARALLEL       = ${USE_PARALLEL}"
+  echo "GPARAL             = ${GPARAL}"
+  echo "GPARAL_OPTS_GLB    = ${GPARAL_OPTS_GLB}"
+  echo "GPARAL_OPTS_SSH    = ${GPARAL_OPTS_SSH}"
+  echo "GPARAL_OPTS_TIME   = ${GPARAL_OPTS_TIME}"
+  echo "GPARAL_OPTS_RESUME = ${GPARAL_OPTS_RESUME}"
+
+  echo
+  exit 1
+}
+
+# -------------------------------------------------------
+# getDataTypeWps()
+# Usage:      getDataTypeWps var_type [vtable_sfx]
+# Parameters: var_type = the WPS variable/data type
+# Returns:    0
+# Exports:    DATA_TYPE VTABLE_NAME
+# Echoes:     NONE
+#
+# Gets the supplied options to the script.
+# -------------------------------------------------------
+getDataTypeWps()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local my_dtyp="${1}"
+  local my_vsfx="${2}"
+
+  local my_vtyp my_vtbl
+
+  my_vtyp="`toUPPER "${my_dtyp}"`"
+  if [ -z "${my_vtyp}" ]; then
+    procError "usage: ${nm_func} \"var_type\" [\"vtable_sfx\"]"
+  fi
+
+  my_dtyp=( ${my_dtyp} )
+  my_vtyp=( ${my_vtyp} )
+  my_vsfx=( ${my_vsfx} )
+
+  for ((ityp=0; ityp<${#my_vtyp[@]}; ityp++))
+  do
+    my_vsfx[${ityp}]="${my_vsfx[${ityp}]##*.}"
+    case "${my_vtyp[${ityp}]}" in
+      "AGRWRF")
+          my_dtyp[${ityp}]="AGRWRF"
+          my_vsfx[${ityp}]="${my_vsfx[${ityp}]:-${my_dtyp[${ityp}]}}"
+          my_vtbl[${ityp}]="Vtable.${my_vsfx[${ityp}]}"
+        ;;
+      "ARW")
+          my_dtyp[${ityp}]="ARW"
+          my_vsfx[${ityp}]="${my_vsfx[${ityp}]:-${my_dtyp[${ityp}]}}"
+          my_vtbl[${ityp}]="Vtable.${my_vsfx[${ityp}]}"
+        ;;
+      "ARWP")
+          my_dtyp[${ityp}]="ARWp"
+          my_vsfx[${ityp}]="${my_vsfx[${ityp}]:-${my_dtyp[${ityp}]}}"
+          my_vtbl[${ityp}]="Vtable.${my_vsfx[${ityp}]}"
+        ;;
+      "AWIP")
+          my_dtyp[${ityp}]="AWIP"
+          my_vsfx[${ityp}]="${my_vsfx[${ityp}]:-${my_dtyp[${ityp}]}}"
+          my_vtbl[${ityp}]="Vtable.${my_vsfx[${ityp}]}"
+        ;;
+      "CFSR2_WEB")
+          my_dtyp[${ityp}]="CFSR2_web"
+          my_vsfx[${ityp}]="${my_vsfx[${ityp}]:-${my_dtyp[${ityp}]}}"
+          my_vtbl[${ityp}]="Vtable.${my_vsfx[${ityp}]}"
+        ;;
+      "ECMWF")
+          my_dtyp[${ityp}]="ECMWF"
+          my_vsfx[${ityp}]="${my_vsfx[${ityp}]:-${my_dtyp[${ityp}]}}"
+          my_vtbl[${ityp}]="Vtable.${my_vsfx[${ityp}]}"
+        ;;
+      "ERA-INTERIM.ML")
+          my_dtyp[${ityp}]="ERA-interim.ml"
+          my_vsfx[${ityp}]="${my_vsfx[${ityp}]:-${my_dtyp[${ityp}]}}"
+          my_vtbl[${ityp}]="Vtable.${my_vsfx[${ityp}]}"
+        ;;
+      "ERA-INTERIM.PL")
+          my_dtyp[${ityp}]="ERA-interim.pl"
+          my_vsfx[${ityp}]="${my_vsfx[${ityp}]:-${my_dtyp[${ityp}]}}"
+          my_vtbl[${ityp}]="Vtable.${my_vsfx[${ityp}]}"
+        ;;
+      "GFDL")
+          my_dtyp[${ityp}]="GFDL"
+          my_vsfx[${ityp}]="${my_vsfx[${ityp}]:-${my_dtyp[${ityp}]}}"
+          my_vtbl[${ityp}]="Vtable.${my_vsfx[${ityp}]}"
+        ;;
+      "GFS")
+          my_dtyp[${ityp}]="GFS"
+          my_vsfx[${ityp}]="${my_vsfx[${ityp}]:-${my_dtyp[${ityp}]}}"
+          my_vtbl[${ityp}]="Vtable.${my_vsfx[${ityp}]}"
+        ;;
+      "GGODAS")
+          my_dtyp[${ityp}]="GODAS"
+          my_vsfx[${ityp}]="${my_vsfx[${ityp}]:-${my_dtyp[${ityp}]}}"
+          my_vtbl[${ityp}]="Vtable.${my_vsfx[${ityp}]}"
+        ;;
+      "GSM")
+          my_dtyp[${ityp}]="GSM"
+          my_vsfx[${ityp}]="${my_vsfx[${ityp}]:-${my_dtyp[${ityp}]}}"
+          my_vtbl[${ityp}]="Vtable.${my_vsfx[${ityp}]}"
+        ;;
+      "NAM")
+          my_dtyp[${ityp}]="NAM"
+          my_vsfx[${ityp}]="${my_vsfx[${ityp}]:-${my_dtyp[${ityp}]}}"
+          my_vtbl[${ityp}]="Vtable.${my_vsfx[${ityp}]}"
+        ;;
+      "NARR")
+          my_dtyp[${ityp}]="NARR"
+          my_vsfx[${ityp}]="${my_vsfx[${ityp}]:-${my_dtyp[${ityp}]}}"
+          my_vtbl[${ityp}]="Vtable.${my_vsfx[${ityp}]}"
+        ;;
+      "NCEP2")
+          my_dtyp[${ityp}]="NCEP2"
+          my_vsfx[${ityp}]="${my_vsfx[${ityp}]:-${my_dtyp[${ityp}]}}"
+          my_vtbl[${ityp}]="Vtable.${my_vsfx[${ityp}]}"
+        ;;
+      "NNRP")
+          my_dtyp[${ityp}]="NNRP"
+          my_vsfx[${ityp}]="${my_vsfx[${ityp}]:-${my_dtyp[${ityp}]}}"
+          my_vtbl[${ityp}]="Vtable.${my_vsfx[${ityp}]}"
+        ;;
+      "NOGAPS")
+          my_dtyp[${ityp}]="NOGAPS"
+          my_vsfx[${ityp}]="${my_vsfx[${ityp}]:-${my_dtyp[${ityp}]}}"
+          my_vtbl[${ityp}]="Vtable.${my_vsfx[${ityp}]}"
+        ;;
+      "TCRP")
+          my_dtyp[${ityp}]="TCRP"
+          my_vsfx[${ityp}]="${my_vsfx[${ityp}]:-${my_dtyp[${ityp}]}}"
+          my_vtbl[${ityp}]="Vtable.${my_vsfx[${ityp}]}"
+        ;;
+      "UKMO_LANDSEA")
+          my_dtyp[${ityp}]="UKMO_LANDSEA"
+          my_vsfx[${ityp}]="${my_vsfx[${ityp}]:-${my_dtyp[${ityp}]}}"
+          my_vtbl[${ityp}]="Vtable.${my_vsfx[${ityp}]}"
+        ;;
+      "SST")
+          my_dtyp[${ityp}]="SST"
+          my_vsfx[${ityp}]="${my_vsfx[${ityp}]:-${my_dtyp[${ityp}]}}"
+          my_vtbl[${ityp}]="Vtable.${my_vsfx[${ityp}]}"
+        ;;
+      *)
+          my_vsfx[${ityp}]="${my_vsfx[${ityp}]:-${my_dtyp[${ityp}]}}"
+          my_vtbl[${ityp}]="Vtable.${my_vsfx[${ityp}]}"
+        ;;
+    esac
+  done
+
+  export DATA_TYPE="${my_dtyp[@]}"
+  export VTABLE_SFX="${my_vsfx[@]:0:${#my_dtyp[@]}}"
+  export VTABLE_NAME="${my_vtbl[@]:0:${#my_dtyp[@]}}"
+
+  return 0
+}
+
+# -------------------------------------------------------
+# checkNameLists()
+# Usage:      checkNameLists
+# Parameters: NONE
+# Returns:    0
+# Exports:    NONE
+# Echoes:     NONE
+#
+# Checks the WRF/WPS namelists for consistency.
+# -------------------------------------------------------
+checkNameLists()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local nmlst_wrf="namelist.input"
+  local nmlst_wps="namelist.wps"
+
+  local xpr1 xpr2
+  local my_str1 my_val1 my_str2 my_val2
+  local nDOMS my_doms ivar
+
+  # -----
+  # Check for the presence of nproc_x and nproc_y lines (they need to be
+  # both present or both absent)
+  my_str1="$( echo "`getNameListVar ${nmlst_wrf} nproc_x`" | awk '{print $1}' )"
+    [ $? -ne 0 ] && my_str1=
+  my_str2="$( echo "`getNameListVar ${nmlst_wrf} nproc_y`" | awk '{print $1}' )"
+    [ $? -ne 0 ] && my_str2=
+
+  if [ -n "${my_str1:+1}" -a -z "${my_str2}" ] || \
+     [ -z "${my_str1}"    -a -n "${my_str2:+1}" ]; then
+    procError "both \"nproc_x\" and \"nproc_y\" should be defined" \
+              "in the WRF input file: ${nmlst_wrf}"
+  fi
+  # -----
+
+
+  # -----
+  # Check the number of domains in "nmlst_wrf", "nmlst_wps"
+  # The number of domains for all WRF/WPS files should be exactly the same
+  # nmlst_wrf file
+  my_str1="`getNameListVar ${nmlst_wrf} max_dom`"
+    [ $? -ne 0 ] && my_str1=
+  my_str2="`getNameListVar ${nmlst_wps} max_dom`"
+    [ $? -ne 0 ] && my_str2=
+
+  if [ -z "${my_str1}" ]; then
+    procError "\"max_dom\" not found" \
+              "in the WRF input file: ${nmlst_wrf}"
+  fi
+
+  if [ -z "${my_str2}" ]; then
+    procError "\"max_dom\" not found" \
+              "in the WPS input file: ${nmlst_wps}"
+  fi
+
+  nDOMS="$( echo "${my_str1}" | awk '{print $3}' )"
+  nDOMS="`getPosInteger "${nDOMS}"`"
+  nDOMS="${nDOMS:-1}"
+
+  my_doms="$( echo "${my_str2}" | awk '{print $3}' )"
+  my_doms="`getPosInteger "${my_doms}"`"
+  my_doms="${my_doms:-1}"
+
+  if [ ${nDOMS} -ne ${my_doms} ]; then
+      procError "inconsistent number of domains in:" \
+                "WRF file: ${nmlst_wrf}" \
+                "WPS file: ${nmlst_wps}"
+  fi
+  # -----
+
+
+  # -----
+  # Check the following variables for consistency in the files
+  # "nmlst_wrf" and "nmlst_wps"
+  vars_to_check="interval_seconds i_parent_start j_parent_start
+                 s_we e_we s_sn e_sn dx dy"
+  for ivar in ${vars_to_check}
+  do
+    my_str1="`getNameListVar ${nmlst_wrf} ${ivar} ${nDOMS}`"
+    if [ $? -ne 0 ]; then
+      echo "${my_str1}"
+      exit 1
+    fi
+
+    my_str2="`getNameListVar ${nmlst_wps} ${ivar} ${nDOMS}`"
+    if [ $? -ne 0 ]; then
+      echo "${my_str2}"
+      exit 1
+    fi
+
+    if [ "`toUPPER "${my_str1}"`" != "`toUPPER "${my_str2}"`" ]; then
+        procError "inconsistent values for the variable \"${ivar}\" found in:" \
+                  "WRF file: ${nmlst_wrf}" \
+                  "WPS file: ${nmlst_wps}"
+    fi
+  done
+  # -----
+
+  return 0
+}
+
+GetListGribDataFiles()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local tmpLIST tmpNAMES ifile
+
+  if [ $# -lt 2 ]; then
+    procError "need to define the list of directories and the file reg. expression to examine" \
+              "usage: ${nm_func} dir_list file_string"
+  fi
+
+  searchFILE "${1}" "${2}"
+  tmpLIST="${foundFilePath}"
+  unset foundFilePath
+
+  if [ -n "${tmpLIST:+1}" ]; then
+    for ifile in ${tmpLIST}
+    do
+      if [ -n "$(isGrib "${ifile}")" ]; then
+        tmpNAMES="${tmpNAMES} ${ifile}"
+      fi
+    done
+  fi
+
+  echo "$( strTrim "${tmpNAMES}" 2 )"
+}

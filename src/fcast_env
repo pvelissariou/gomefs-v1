@@ -1,0 +1,82 @@
+# Author:  Panagiotis Velissariou <pvelissariou@fsu.edu>
+#                                 <velissariou.1@osu.edu>
+# Version: 1.0
+#
+# Version - 1.0 Mon Feb 24 2014
+
+# This file is sourced by all relevant forecast scripts to
+# obtain the global environment variables defined here.
+# The format of the commands below follows the bash notation.
+
+
+#------------------------------------------------------------
+# USER DEFINED CONFIGURATION
+
+export FCAST_ROOT=.
+
+#export FCAST_DATA=${FCAST_ROOT}/Data
+export FCAST_DATA=${FCAST_ROOT}/test
+export FCAST_LOGS=${FCAST_ROOT}/Logs
+export FCAST_PLOTS=${FCAST_ROOT}/plots
+export FCAST_OUT=${FCAST_ROOT}/Output
+
+export FCAST_IDL=${FCAST_ROOT}/idl
+
+# Variables for the atmospheric (WRF) model
+export FCAST_WPS=${FCAST_ROOT}/wps
+export URL_GFS="http://www.ftp.ncep.noaa.gov/data/nccf/com/gfs/prod/"
+
+# Variables for the ocean (ROMS) model
+export URL_HYCOM="ftp://www.ftp.ncep.noaa.gov/data/nccf/com/gfs/prod/"
+#------------------------------------------------------------
+
+
+#------------------------------------------------------------
+# LOAD THE UTILITY FUNCTIONS
+#
+if [ -f functions_common ]; then
+  . functions_common
+else
+  echo " ### ERROR:: in fcast_env"
+  echo "     Cannot locate the file: functions_common"
+  echo "     Exiting now ..."
+  echo
+  exit 1
+fi
+#------------------------------------------------------------
+
+
+# ----- (1) Check for the DATA directory, create if needed
+FCAST_DATA="`echo "${FCAST_DATA}" | sed 's/[ \t]//g' | sed 's#/*$##'`"
+[ "X${FCAST_DATA}" = "X" ] && FCAST_DATA="."
+if [ "${FCAST_DATA}" != "." ]; then
+  [ ! -d "${FCAST_DATA}" ] && mkdir -p "${FCAST_DATA}"
+fi
+
+# ----- (2) Check for the LOGS directory, create if needed
+FCAST_LOGS="`echo "${FCAST_LOGS}" | sed 's/[ \t]//g' | sed 's#/*$##'`"
+[ "X${FCAST_LOGS}" = "X" ] && FCAST_LOGS="."
+if [ "${FCAST_LOGS}" != "." ]; then
+  [ ! -d "${FCAST_LOGS}" ] && mkdir -p "${FCAST_LOGS}"
+fi
+
+# ----- (3) Check for the PLOTS directory, create if needed
+FCAST_PLOTS="`echo "${FCAST_PLOTS}" | sed 's/[ \t]//g' | sed 's#/*$##'`"
+[ "X${FCAST_PLOTS}" = "X" ] && FCAST_PLOTS="."
+if [ "${FCAST_PLOTS}" != "." ]; then
+  [ ! -d "${FCAST_PLOTS}" ] && mkdir -p "${FCAST_PLOTS}"
+fi
+
+# ----- (4) Check the WPS
+FCAST_WPS="`echo "${FCAST_WPS}" | sed 's/[ \t]//g' | sed 's#/*$##'`"
+
+# ----- (5) Check the URL_GFS
+URL_GFS="`echo "${URL_GFS}" | sed 's/[ \t]//g' | sed 's#/*$##'`"
+
+# ----- (6) Check the URL_HYCOM
+URL_HYCOM="`echo "${URL_HYCOM}" | sed 's/[ \t]//g' | sed 's#/*$##'`"
+
+
+
+
+

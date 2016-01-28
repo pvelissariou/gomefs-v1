@@ -1,0 +1,139 @@
+# Author:  Panagiotis Velissariou <pvelissariou@fsu.edu>
+#                                 <velissariou.1@osu.edu>
+# Version: 1.0
+#
+# Version - 1.0 Mon Feb 24 2014
+
+# This file is sourced by all relevant forecast scripts to
+# obtain the global environment variables defined here.
+# The format of the commands below follows the bash notation.
+
+# Make sure that the current working directory is in the PATH
+[[ ! :$PATH: == *:".":* ]] && export PATH="${PATH}:."
+
+#------------------------------------------------------------
+# USER DEFINED CONFIGURATION
+
+# These are all the environment modules used during
+# the compilation of the model executables and therefore,
+# are required to be loaded when running the model executables
+MODULE_FILES="intel12 intel12-openmpi"
+
+# The forecast cycle
+CAST_CYCLE=0
+
+# The time interval (hours) for the input atmospheric records
+# Currently 3 or 6
+#ATM_DATA_HOURS=3
+ATM_DATA_HOURS=6
+
+# Length of the forecast (in days)
+# CAST_LENGTH days in the future from the forecast time
+CAST_LENGTH=5
+
+# Initialization time for the current forecast (in days)
+# CAST_INIT_DAYS days back from the forecast time
+CAST_INIT_DAYS=5
+
+CAST_ROOT=/Net/fcaster/home/FORECAST
+#CAST_ROOT=/enterprise0/fcaster/home/FORECAST
+CAST_DATA=${CAST_ROOT}/Data
+CAST_BATH=${CAST_ROOT}/Data/bath
+CAST_BDRY=${CAST_ROOT}/Data/boundary
+CAST_INIT=${CAST_ROOT}/Data/ini
+CAST_WGHT=${CAST_ROOT}/Data/weights
+CAST_LOGS=${CAST_ROOT}/Logs
+CAST_PLOTS=${CAST_ROOT}/plots
+CAST_OUT=${CAST_ROOT}/Output
+CAST_IDL=${CAST_ROOT}/idl
+CAST_MAT=${CAST_ROOT}/matlab
+#CAST_WEB=${CAST_ROOT}/forecasts
+CAST_WEB=/Net/fcaster/forecasts
+
+# Extra file that contains environment variables for the current forecast
+CAST_XENV=${CAST_ROOT}/cast_xenv
+
+# Variables for WRF/WPS
+CAST_WPS=${CAST_ROOT}/wps
+
+# Plot files extensions
+# PLOT_TYPE = input plot file extension
+# IMG_TYPE  = output image file extension
+# PLOT_TYPE is converted to IMG_TYPE using ImageMagick/GraphicsMagick
+PLOT_TYPE="eps"
+IMG_TYPE="jpg"
+#------------------------------------------------------------
+
+#############################################################
+##### NO USER MODIFICATIONS REQUIRED BEYOND THIS POINT
+#############################################################
+
+# ----- Check for the ROOT directory
+CAST_ROOT="`echo "${CAST_ROOT}" | sed 's/[ \t]//g' | sed 's#/*$##'`"
+[ "X${CAST_ROOT}" = "X" ] && CAST_ROOT="."
+export CAST_ROOT
+
+# ----- Check for the DATA directory
+CAST_DATA="`echo "${CAST_DATA}" | sed 's/[ \t]//g' | sed 's#/*$##'`"
+[ "X${CAST_DATA}" = "X" ] && CAST_DATA="${CAST_ROOT}"
+export CAST_DATA
+
+# ----- Check for the BATHYMETRY directory
+CAST_BATH="`echo "${CAST_BATH}" | sed 's/[ \t]//g' | sed 's#/*$##'`"
+[ "X${CAST_BATH}" = "X" ] && CAST_BATH="${CAST_ROOT}"
+export CAST_BATH
+
+# ----- Check for the BOUNDARY directory
+CAST_BDRY="`echo "${CAST_BDRY}" | sed 's/[ \t]//g' | sed 's#/*$##'`"
+[ "X${CAST_BDRY}" = "X" ] && CAST_BDRY="${CAST_ROOT}"
+export CAST_BDRY
+
+# ----- Check for the INIT directory
+CAST_INIT="`echo "${CAST_INIT}" | sed 's/[ \t]//g' | sed 's#/*$##'`"
+[ "X${CAST_INIT}" = "X" ] && CAST_INIT="${CAST_ROOT}"
+export CAST_INIT
+
+# ----- Check for the WEIGHTS directory
+CAST_WGHT="`echo "${CAST_WGHT}" | sed 's/[ \t]//g' | sed 's#/*$##'`"
+[ "X${CAST_WGHT}" = "X" ] && CAST_WGHT="${CAST_ROOT}"
+export CAST_WGHT
+
+# ----- Check for the LOGS directory
+CAST_LOGS="`echo "${CAST_LOGS}" | sed 's/[ \t]//g' | sed 's#/*$##'`"
+[ "X${CAST_LOGS}" = "X" ] && CAST_LOGS="${CAST_ROOT}"
+export CAST_LOGS
+
+# ----- Check for the PLOTS directory
+CAST_PLOTS="`echo "${CAST_PLOTS}" | sed 's/[ \t]//g' | sed 's#/*$##'`"
+[ "X${CAST_PLOTS}" = "X" ] && CAST_PLOTS="${CAST_ROOT}"
+export CAST_PLOTS
+
+# ----- Check for the OUTPUT directory
+CAST_OUT="`echo "${CAST_OUT}" | sed 's/[ \t]//g' | sed 's#/*$##'`"
+[ "X${CAST_OUT}" = "X" ] && CAST_OUT="${CAST_ROOT}"
+export CAST_OUT
+
+# ----- Check for the IDL directory
+CAST_IDL="`echo "${CAST_IDL}" | sed 's/[ \t]//g' | sed 's#/*$##'`"
+[ "X${CAST_IDL}" = "X" ] && CAST_IDL="${CAST_ROOT}"
+export CAST_IDL
+
+# ----- Check for the Matlab directory
+CAST_MAT="`echo "${CAST_MAT}" | sed 's/[ \t]//g' | sed 's#/*$##'`"
+[ "X${CAST_MAT}" = "X" ] && CAST_MAT="${CAST_ROOT}"
+export CAST_MAT
+
+# ----- Check for the WEB directory
+CAST_WEB="`echo "${CAST_WEB}" | sed 's/[ \t]//g' | sed 's#/*$##'`"
+[ "X${CAST_WEB}" = "X" ] && CAST_WEB="${CAST_ROOT}"
+export CAST_WEB
+
+# ----- Strip spaces and trailing slashes in the directory names
+CAST_WPS="`echo "${CAST_WPS}" | sed 's/[ \t]//g' | sed 's#/*$##'`"
+export CAST_WPS
+
+# ----- Export all remaining variables
+export CAST_CYCLE_ALL="0 6 12 18"
+export CAST_CYCLE ATM_DATA_HOURS
+export CAST_LENGTH CAST_INIT_DAYS
+export CAST_XENV

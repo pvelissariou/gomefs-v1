@@ -1,0 +1,1035 @@
+; PROGRAM :: Make-Clim-ROMS-B
+;   Creates the boundary conditions for ROMS from the HYCOM
+;   (global or regional) NetCDF data files
+;   The interpolation is performed horizontally using the
+;   bi-linear interpolation and vertically using a combination of
+;   spline/linear interpolation.
+;   This is a much faster program than Make-Clim-ROMS
+
+;*******************************************************************************
+; START THE MAIN PROGRAM
+;*******************************************************************************
+
+CAST_ROOT  = ''
+CAST_BATH  = ''
+CAST_PLOTS = ''
+CAST_OUT   = ''
+
+; This is for subsetting the hycom bathymetry (if global is used)
+HC_IDXI0 = -1
+HC_IDXI1 = -1
+HC_IDXJ0 = -1
+HC_IDXJ1 = -1
+
+CPU, TPOOL_NTHREADS = 1
+
+
+idl_ERRCODE = 0
+catch, idl_ERRCODE
+if (idl_ERRCODE ne 0) then begin
+  catch, /cancel
+  help, /LAST_MESSAGE
+  exit,  /NO_CONFIRM, STATUS = idl_ERRCODE
+endif
+
+
+BEG_TIMECOUNT = systime(/seconds)
+
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+; Initialize.
+@proj_setup
+
+;REGION = 'Gulf of Mexico'
+REGION = 'GoM (ocean)'
+
+; begin/end dates for the current simulation
+BEG_DATE = '2010/01/01 00:00:00'
+END_DATE = '2010/01/31 00:00:00'
+
+; ----- DOM_NUMB represents the domain number in the input data
+;       data are stored in one file per domain ('', d01, d02, ...)
+DOM_NUMB = 1
+
+dnumber = (n_elements(DOM_NUMB) gt 0) ? fix(DOM_NUMB) : 0
+dom_str = (dnumber gt 0) ? string(dnumber, format = '("_d", i2.2)') : ''
+
+; ----- number of extra records (days) before BEG_DATE and after END_DATE
+REC_EXTBEG = 0
+REC_EXTEND = 0
+
+; ----- USE_CDL, flag to use or not the generated "cdl" file
+; 1 = to turn on to use the internally generated CDL file
+;     when writing to the NetCDF file
+; 0 = to write directly to the NetCDF file
+use_cdl = 1
+
+; ----- INP_DIR directory for the input data files
+;       OUT_DIR directory for the output data files
+INP_DIR = rootDIR
+OUT_DIR = rootDIR
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+; SET VARIOUS VARIABLES USED IN THE INTERPOLATIONS
+; the window used in boxcar averaging (default: 11)
+smooth_window = 21
+
+; maximum number of iterations for all filling methods (default: 1000)
+;max_fill_iter = 100
+
+miss_val = !VALUES.F_NAN
+
+; 1 = to turn on all debugging messages
+; 0 = to turn off all debugging messages
+debug = 0
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+GetParams, REGION, PlotSize = 1150, Map_Coords = map_coords, $
+           Map_Proj = map_proj
+
+; For the appropriate lake/region to use please check first the file
+; proj_vars.pro and call first the GetParams procedure
+outstr = '/bin/echo -e ' + $
+         '"\n' + String('Running for: ', $
+                        Strupcase(RegionName), format = '(a, 1x, a)') + $
+         '\n" > /dev/stderr'
+Spawn, outstr
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+nEXTBEG = (REC_EXTBEG le 0) ? 0 : REC_EXTBEG
+nEXTEND = (REC_EXTEND le 0) ? 0 : REC_EXTEND
+
+fmtext = '(i4.4, "/", i2.2, "/", i2.2, " ", i2.2, ":", i2.2, ":", i2.2)'
+
+Get_TimeStamp, BEG_DATE, yr_beg, mo_beg, da_beg, hr_beg, mn_beg, sc_beg, $
+               JULIAN = jul_beg, ROMS_STAMP = file_stamp
+caldat, jul_beg - nEXTBEG, mo_ext, da_ext, yr_ext, hr_ext, mn_ext, sc_ext
+EXT_BEG_DATE = string(yr_ext, mo_ext, da_ext, hr_ext, mn_ext, fix(sc_ext), format = fmtext)
+
+Get_TimeStamp, END_DATE, JULIAN = jul_end
+caldat, jul_end + nEXTEND, mo_ext, da_ext, yr_ext, hr_ext, mn_ext, sc_ext
+EXT_END_DATE = string(yr_ext, mo_ext, da_ext, hr_ext, mn_ext, fix(sc_ext), format = fmtext)
+
+TIME_MAX = Get_Dates(EXT_BEG_DATE, EXT_END_DATE, $
+                     YR_OUT = curYR, MO_OUT = curMO, DA_OUT = curDA, $
+                     HR_OUT = curHR, MN_OUT = curMN, SC_OUT = curSC, $
+                     HR_INTERVALS = indgen(24), $
+                     MN_INTERVALS = [ 0 ],      $
+                     YEAR_DAY = curYD,          $
+                     JULIAN   = curJD)
+
+if (jul_beg lt REF_JULDAY) then $
+  message, 'BEG_JULDAY should be greater or equal to REF_JULDAY, please adjust'
+
+yr_str = strtrim(string(yr_beg, format = '(i4.4)'), 2)
+
+; ROMS GoM bathymetry
+roms_bath = FilePath('romsgrd' + dom_str + '.nc', Root_Dir = bathDIR)
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+; Read the HYCOM bathymetry first ...
+; Both GoM/ROMS and GoM/HYCOM grids are defined on the same Horiz. Datum
+; and the same Sphere Radius.
+
+print, 'Reading the bathymetry file: ' + hyc_bath
+Ncdf_ReadBath_Hycom, hyc_bath
+
+hyc_longrid = longrid
+hyc_latgrid = latgrid
+hyc_dgrid   = dgrid
+hyc_mgrid   = mgrid
+hyc_IPNTS   = IPNTS
+hyc_JPNTS   = JPNTS
+void = ChkForMask(hyc_mgrid, 1, hyc_WCELLSIDX, hyc_WCELLS, $
+                  COMPLEMENT = hyc_LCELLSIDX, NCOMPLEMENT = hyc_LCELLS)
+hyc_TCELLS = hyc_IPNTS * hyc_JPNTS
+if ( (n_elements(HC_IDXI0) ne 0) and  (n_elements(HC_IDXI1) ne 0) and $
+     (n_elements(HC_IDXJ0) ne 0) and  (n_elements(HC_IDXJ1) ne 0) ) then begin
+  if ( (HC_IDXI0 ge 0) and  (HC_IDXI1 ge 0) and $
+       (HC_IDXJ0 ge 0) and  (HC_IDXJ1 ge 0) ) then begin
+    hyc_longrid = longrid[HC_IDXI0:HC_IDXI1, HC_IDXJ0:HC_IDXJ1]
+    hyc_latgrid = latgrid[HC_IDXI0:HC_IDXI1, HC_IDXJ0:HC_IDXJ1]
+    hyc_dgrid   = dgrid[HC_IDXI0:HC_IDXI1, HC_IDXJ0:HC_IDXJ1]
+    hyc_mgrid   = mgrid[HC_IDXI0:HC_IDXI1, HC_IDXJ0:HC_IDXJ1]
+    hyc_IPNTS   = (size(hyc_mgrid, /DIMENSIONS))[0]
+    hyc_JPNTS   = (size(hyc_mgrid, /DIMENSIONS))[1]
+    void = ChkForMask(hyc_mgrid, 1, hyc_WCELLSIDX, hyc_WCELLS, $
+                      COMPLEMENT = hyc_LCELLSIDX, NCOMPLEMENT = hyc_LCELLS)
+    hyc_TCELLS = hyc_IPNTS * hyc_JPNTS
+  endif
+endif
+
+; need this because we need to undefine common bathymetry parameters
+; found in both Ncdf_ReadBath_Hycom and Ncdf_ReadBath_Roms procedures
+Undefine_Hycom_params, /BATH
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+; Read the GOM bathymetry next ...
+; Both GoM/ROMS and GoM/HYCOM grids are defined on the same Horiz. Datum
+; and the same Sphere Radius.
+
+print, 'Reading the bathymetry file: ' + roms_bath
+Ncdf_ReadBath_Roms, roms_bath
+
+KPNTS = SLAY
+s_rho = KPNTS
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+; Get the GOM boundary buffer zone ...
+
+if (max(BND_DEF) le 0) then $
+  message, 'need to define at least one open boundary in BND_DEF'
+
+; set all mask values to 0 (land) and adjust them below as needed
+mask_rho_buf = mask_rho & mask_rho_buf[*] = 0
+
+; ----- west face
+if (BND_DEF[0] gt 0) then begin
+  I1 = 0
+  I2 = extnBUFZONE - 1
+  J1 = 0
+  J2 = JPNTS - 1
+
+  IFORT_BUF_WEST = [I1, I2] + 1
+  JFORT_BUF_WEST = [J1, J2] + 1
+
+  tmp_Iarr = [ -1 ]
+  tmp_Jarr = [ -1 ]
+  tmp_J = indgen(J2 - J1 + 1)
+  for i = I1, I2 do begin
+    tmp_I = tmp_J & tmp_I[*] = i
+    tmp_Iarr = [ tmp_Iarr, tmp_I ]
+    tmp_Jarr = [ tmp_Jarr,  J1 + tmp_J ]
+  endfor
+  tmp_Iarr = tmp_Iarr[1:*]
+  tmp_Jarr = tmp_Jarr[1:*]
+
+  mask_rho_buf[tmp_Iarr, tmp_Jarr] = mask_rho[tmp_Iarr, tmp_Jarr]
+endif
+
+; ----- south face
+if (BND_DEF[1] gt 0) then begin
+;  I1 = BND_DEF[0] gt 0 ? extnBUFZONE : 0
+  I1 = (where(longrid[*, 0] gt -89.0, icnt))[0]
+  I2 = IPNTS - 1
+  J1 = 0
+  J2 = extnBUFZONE - 1
+
+  IFORT_BUF_SOUTH = [I1, I2] + 1
+  JFORT_BUF_SOUTH = [J1, J2] + 1
+
+  tmp_Iarr = [ -1 ]
+  tmp_Jarr = [ -1 ]
+  tmp_I = indgen(I2 - I1 + 1)
+  for i = J1, J2 do begin
+    tmp_J = tmp_I & tmp_J[*] = i
+    tmp_Iarr = [ tmp_Iarr, I1 + tmp_I ]
+    tmp_Jarr = [ tmp_Jarr, tmp_J ]
+  endfor
+  tmp_Iarr = tmp_Iarr[1:*]
+  tmp_Jarr = tmp_Jarr[1:*]
+
+  mask_rho_buf[tmp_Iarr, tmp_Jarr] = mask_rho[tmp_Iarr, tmp_Jarr]
+endif
+
+; ----- east face
+if (BND_DEF[2] gt 0) then begin
+  I1 = IPNTS - extnBUFZONE
+  I2 = IPNTS - 1
+  J1 = BND_DEF[1] gt 0 ? extnBUFZONE : 0
+  J2 = JPNTS - 1
+
+  IFORT_BUF_EAST = [I1, I2] + 1
+  JFORT_BUF_EAST = [J1, J2] + 1
+
+  tmp_Iarr = [ -1 ]
+  tmp_Jarr = [ -1 ]
+  tmp_J = indgen(J2 - J1 + 1)
+  for i = I1, I2 do begin
+    tmp_I = tmp_J & tmp_I[*] = i
+    tmp_Iarr = [ tmp_Iarr, tmp_I ]
+    tmp_Jarr = [ tmp_Jarr,  J1 + tmp_J ]
+  endfor
+  tmp_Iarr = tmp_Iarr[1:*]
+  tmp_Jarr = tmp_Jarr[1:*]
+
+  mask_rho_buf[tmp_Iarr, tmp_Jarr] = mask_rho[tmp_Iarr, tmp_Jarr]
+endif
+
+; ----- north face
+if (BND_DEF[3] gt 0) then begin
+  I1 = (where(longrid[*, 0] gt -89.0, icnt))[0]
+  I2 = IPNTS - extnBUFZONE - 1
+  J1 = JPNTS - extnBUFZONE
+  J2 = JPNTS - 1
+
+  IFORT_BUF_NORTH = [I1, I2] + 1
+  JFORT_BUF_NORTH = [J1, J2] + 1
+
+  tmp_Iarr = [ -1 ]
+  tmp_Jarr = [ -1 ]
+  tmp_I = indgen(I2 - I1 + 1)
+  for i = J1, J2 do begin
+    tmp_J = tmp_I & tmp_J[*] = i
+    tmp_Iarr = [ tmp_Iarr, I1 + tmp_I ]
+    tmp_Jarr = [ tmp_Jarr, tmp_J ]
+  endfor
+  tmp_Iarr = tmp_Iarr[1:*]
+  tmp_Jarr = tmp_Jarr[1:*]
+
+  mask_rho_buf[tmp_Iarr, tmp_Jarr] = mask_rho[tmp_Iarr, tmp_Jarr]
+endif
+
+mask_u_buf = mask_rho_buf[1:IPNTS - 1, *] * mask_rho_buf[0:IPNTS - 2, *]
+mask_v_buf = mask_rho_buf[*, 1:JPNTS - 1] * mask_rho_buf[*, 0:JPNTS - 2]
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+if (n_elements(IFORT_BUF_WEST) ne 0) then begin
+  print, 'WEST BUFFER ZONE'
+    print, 'I: ', IFORT_BUF_WEST, format = '(3x, a, 2x, 2i5)'
+    print, 'J: ', JFORT_BUF_WEST, format = '(3x, a, 2x, 2i5)'
+endif
+
+if (n_elements(IFORT_BUF_SOUTH) ne 0) then begin
+  print, 'SOUTH BUFFER ZONE'
+    print, 'I: ', IFORT_BUF_SOUTH, format = '(3x, a, 2x, 2i5)'
+    print, 'J: ', JFORT_BUF_SOUTH, format = '(3x, a, 2x, 2i5)'
+endif
+
+if (n_elements(IFORT_BUF_EAST) ne 0) then begin
+  print, 'EAST BUFFER ZONE'
+    print, 'I: ', IFORT_BUF_EAST, format = '(3x, a, 2x, 2i5)'
+    print, 'J: ', JFORT_BUF_EAST, format = '(3x, a, 2x, 2i5)'
+endif
+
+if (n_elements(IFORT_BUF_NORTH) ne 0) then begin
+  print, 'NORTH BUFFER ZONE'
+    print, 'I: ', IFORT_BUF_NORTH, format = '(3x, a, 2x, 2i5)'
+    print, 'J: ', JFORT_BUF_NORTH, format = '(3x, a, 2x, 2i5)'
+endif
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+; Create output directories and files
+make_dir, OUT_DIR
+
+; create the ROMS climatology file
+clim_str = 'romsclim' + dom_str + '_' + file_stamp
+clim_file = FilePath(clim_str + '.nc' , Root_Dir = OUT_DIR)
+print, 'Writting the data to the output file: ' + clim_file
+if (readFILE(clim_file)) then begin
+  ;FILE_MOVE, clim_file, FilePath(clim_str + '-OLD.nc', Root_Dir = OUT_DIR), /OVERWRITE
+  FILE_DELETE, clim_file, /ALLOW_NONEXISTENT
+endif
+
+myTYPE   = gom_pfx + ' climatology file'
+myTITLE  = 'Gulf of Mexico ' + '1/' + strtrim(string(fix(1.0/DLON_MEAN)), 2) + ' degree grid'
+climFLG = Ncdf_VarDef_GomRoms_Clim(clim_file, IPNTS, JPNTS, KPNTS, $
+                                   REF_TIME = REF_DATE, $
+                                   TITLE = myTITLE,     $
+                                   TYPE = myTYPE,       $
+                                   CDL = cdl)
+
+; create the ROMS boundary file
+bry_str = 'romsbry' + dom_str + '_' + file_stamp
+bry_file = FilePath(bry_str + '.nc', Root_Dir = OUT_DIR)
+print, 'Writting the data to the output file: ' + bry_file
+if (readFILE(bry_file)) then begin
+  ;FILE_MOVE, bry_file, FilePath(bry_str + '-OLD.nc', Root_Dir = OUT_DIR), /OVERWRITE
+  FILE_DELETE, bry_file, /ALLOW_NONEXISTENT
+endif
+
+myTYPE   = gom_pfx + ' boundary forcing file'
+myTITLE  = 'Gulf of Mexico ' + '1/' + strtrim(string(fix(1.0/DLON_MEAN)), 2) + ' degree grid'
+bryFLG = Ncdf_VarDef_GomRoms_Bry(bry_file, IPNTS, JPNTS, KPNTS, $
+                                 BND_DEF, $
+                                 REF_TIME = REF_DATE, $
+                                 TITLE = myTITLE,     $
+                                 TYPE = myTYPE,       $
+                                 CDL = cdl)
+
+; open the ROMS climatology/boundary files for writting
+if ( (climFLG eq 0) and (bryFLG eq 0) ) then begin
+  ncid_clim = ncdf_open(clim_file, /WRITE)
+  ncid_bry  = ncdf_open(bry_file, /WRITE)
+endif else begin
+  if (climFLG eq 0) then message, 'error opening the file for writting: ' + clim_file
+  if (bryFLG eq 0)  then message, 'error opening the file for writting: ' + bry_file
+endelse
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+; Start the calculations: Loop through the files found and perform all necessary
+; calculations
+;iBEG = 0L
+;iEND = TIME_MAX - 1
+;iREC = 0L
+
+  begFLG = ChkForMask(curJD, jul_beg, idx_beg, cnt_beg)
+idx_beg = idx_beg[0]
+  endFLG = ChkForMask(curJD, jul_end, idx_end, cnt_end)
+idx_end = idx_end[0]
+
+iBEG = idx_beg
+iEND = idx_end
+iREC = 0L
+
+if (nEXTBEG gt 0) then begin
+  ; get nEXTBEG records before the beginning of the simulation,
+  ; if they exist
+  begFLG = ChkForMask(curJD, jul_beg, idx_beg, cnt_beg)
+  idx_beg = idx_beg[0]
+
+  f_year = string(curYR[0:idx_beg-1], format = '(i4.4)')
+
+  ;fstr= string(curYR[0:idx_beg-1], format = '(i4.4)') + '_' + $
+  ;      string(curYD[0:idx_beg-1], format = '(i3.3)') + '_' + $
+  ;      string(curHR[0:idx_beg-1], format = '(i2.2)')
+  ;f_name = 'archv.' + fstr + '_3z' + '.nc'
+
+  fstr= string(curYR[0:idx_beg-1], format = '(i4.4)') + $
+        string(curMO[0:idx_beg-1], format = '(i2.2)') + $
+        string(curDA[0:idx_beg-1], format = '(i2.2)') + '_' + $
+        string(curHR[0:idx_beg-1], format = '(i2.2)') + $
+        string(curMN[0:idx_beg-1], format = '(i2.2)')
+  f_name = 'hycom_' + fstr + '.nc'
+
+  hyc_inp = FilePath(f_name, Root_Dir = INP_DIR)
+  idx = where(readFILE(hyc_inp) eq 1, cnt)
+
+  if (cnt ne 0) then iBEG = idx[cnt - (1 > nEXTBEG < cnt)]
+endif
+
+if (nEXTEND gt 0) then begin
+  ; get nEXTEND records after the end of the simulation,
+  ; if they exist
+  endFLG = ChkForMask(curJD, jul_end, idx_end, cnt_end)
+  idx_end = idx_end[0]
+
+  f_year = string(curYR[idx_end:*], format = '(i4.4)')
+
+  ;fstr= string(curYR[idx_end:*], format = '(i4.4)') + '_' + $
+  ;      string(curYD[idx_end:*], format = '(i3.3)') + '_' + $
+  ;      string(curHR[idx_end:*], format = '(i2.2)')
+  ;f_name = 'archv.' + fstr + '_3z' + '.nc'
+
+  fstr= string(curYR[idx_end:*], format = '(i4.4)') + $
+        string(curMO[idx_end:*], format = '(i2.2)') + $
+        string(curDA[idx_end:*], format = '(i2.2)') + '_' + $
+        string(curHR[idx_end:*], format = '(i2.2)') + $
+        string(curMN[idx_end:*], format = '(i2.2)')
+  f_name = 'hycom_' + fstr + '.nc'
+
+  hyc_inp = FilePath(f_name, Root_Dir = INP_DIR)
+  idx = where(readFILE(hyc_inp) eq 1, cnt)
+
+  if (cnt ne 0) then iEND = idx_end + idx[cnt - (1 > nEXTEND < cnt)]
+endif
+
+for itm = iBEG, iEND do begin
+  thisYR = curYR[itm]
+  thisYD = curYD[itm] ; day of the year
+  thisMO = curMO[itm]
+  thisDA = curDA[itm]
+  thisHR = curHR[itm]
+  thisMN = curMN[itm]
+  thisSC = curSC[itm]
+  thisJD = curJD[itm]
+
+  time0 = systime(/seconds)
+  timeTOL = 0.0D
+
+  ;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  ; Read the HYCOM data ...
+
+  f_year = strtrim(string(thisYR, format = '(i4.4)'), 2)
+
+  ;fstr   = string(thisYR, '_', thisYD, '_', thisHR, format = '(i4.4, a1, i3.3, a1, i2.2)')
+  ;f_name = 'archv.' + fstr + '_3z' + '.nc'
+
+  fstr   = string(thisYR, thisMO, thisDA, '_', thisHR, thisMN, format = '(i4.4, 2i2.2, a1, 2i2.2)')
+  f_name = 'hycom_' + fstr + '.nc'
+  
+  hyc_inp = FilePath(f_name, Root_Dir = INP_DIR)
+
+  if ( readFILE(hyc_inp) ) then begin
+    print, 'Reading the input file: ' + hyc_inp
+    Ncdf_Hycom_ReadOutput, hyc_inp, MASK = hyc_mgrid, $
+                           LON_OUT = hyc_datlons, LAT_OUT = hyc_datlats
+
+    if ( (array_equal(hyc_longrid, hyc_datlons) ne 1) or $
+         (array_equal(hyc_latgrid, hyc_datlats) ne 1) ) then begin
+      message, 'found discrepancies in Longitude/Latitude in the files:', /INFORMATIONAL
+      message, '   Bath: ' + hyc_bath, /INFORMATIONAL
+      message, '   Data: ' + hyc_inp, /INFORMATIONAL
+      message, 'exiting ...'
+    endif
+  endif else begin
+    ;print, 'warning: input file not found: ' + hyc_inp
+    continue
+  endelse
+
+  HYC_KPNTS = n_zdeps
+  hyc_depth = zdeps
+  ;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+  ;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  ; Fill the HYCOM missing data (including the land points)
+  ; at each HYCOM z-level.
+  ; This is a pre-prossecing step (values are not changed at
+  ; the locations with existing data.
+
+  print, 'Filling the missing data in the Input Fields ...'
+  time1 = systime(/seconds)
+
+  print, '   Filling the missing sea surface height data ...'
+  ssh = VL_FillData(ssh, miss_val, $
+           BOXCAR = meth_boxcar,   $
+           FLAP   = meth_flap,     $
+           SMWIN  = smooth_window, $
+           ITER   = max_fill_iter, $
+           TOL = 0.001,            $
+           DEBUG = debug)
+
+  print, '   Filling the missing salinity data ...'
+  salt[*, *, *] = VL_FillData(salt, miss_val, $
+                     BOXCAR = meth_boxcar,    $
+                     FLAP   = meth_flap,      $
+                     SMWIN  = smooth_window,  $
+                     ITER   = max_fill_iter,  $
+                     TOL = 0.01,              $
+                     DEBUG = debug)
+
+  print, '   Filling the missing temperature data ...'
+  temp[*, *, *] = VL_FillData(temp, miss_val, $
+                     BOXCAR = meth_boxcar,    $
+                     FLAP   = meth_flap,      $
+                     SMWIN  = smooth_window,  $
+                     ITER   = max_fill_iter,  $
+                     TOL = 0.01,              $
+                     DEBUG = debug)
+
+  print, '   Filling the missing u-velocity data ...'
+  uvel[*, *, *] = VL_FillData(uvel, miss_val, $
+                     BOXCAR = meth_boxcar,    $
+                     FLAP   = meth_flap,      $
+                     SMWIN  = smooth_window,  $
+                     ITER   = max_fill_iter,  $
+                     TOL = 0.001,             $
+                     DEBUG = debug)
+
+  print, '   Filling the missing v-velocity data ...'
+  vvel[*, *, *] = VL_FillData(vvel, miss_val, $
+                     BOXCAR = meth_boxcar,    $
+                     FLAP   = meth_flap,      $
+                     SMWIN  = smooth_window,  $
+                     ITER   = max_fill_iter,  $
+                     TOL    = 0.001,          $
+                     DEBUG = debug)
+
+  time2 = systime(/seconds)
+  theTIME = time2 - time1
+  timeTOL = timeTOL + theTIME
+  ;if (debug gt 0) then begin
+    if (theTIME le 60.0) then begin
+      print, 'Filling Data Elapsed Time: ', theTIME, 's', format = '(a, f7.2, 2x, a1)'
+    endif else begin
+      print, 'Filling Data Elapsed Time: ', theTIME / 60.0, 'min', format = '(a, f7.2, 2x, a3)'
+    endelse
+  ;endif
+  ;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+  ;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  ; INTERPOLATE HORIZONTALLY
+  ; Regrid the variables to the GoM grid at the same HYCOM levels
+  ; 0 idx in levels is defined at the free surface
+  ; At this point, all variables are defined at RHO-points
+
+  print, 'Interpolating the Input Fields at the GOM/ROMS Domain ...'
+  print, '   Starting the horizontal interpolations ...'
+  time1 = systime(/seconds)
+
+  hlon = reform(hyc_longrid[*, 0])
+  hlat = reform(hyc_latgrid[0, *])
+  glon = reform(longrid[*, 0])
+  glat = reform(latgrid[0, *])
+
+  ; Sea Surface Height
+  gom_zeta = VL_ReGrid(ssh, hlon, hlat, glon, glat)
+
+  ; Salinity
+  gom_salt_zlev = VL_ReGrid(salt, hlon, hlat, glon, glat)
+
+  ; Temperature
+  gom_temp_zlev = VL_ReGrid(temp, hlon, hlat, glon, glat)
+
+  ; U-velocity (at u points)
+  gom_uvel_zlev = Rho2U( VL_ReGrid(uvel, hlon, hlat, glon, glat) )
+
+  ; V-velocity (at v points)
+  gom_vvel_zlev = Rho2V( VL_ReGrid(vvel, hlon, hlat, glon, glat) )
+
+  time2 = systime(/seconds)
+  theTIME = time2 - time1
+  timeTOL = timeTOL + theTIME
+  ;if (debug gt 0) then begin
+    if (theTIME le 60.0) then begin
+      print, 'Horizontal Interpolation Elapsed Time: ', theTIME, 's', format = '(a, f7.2, 2x, a1)'
+    endif else begin
+      print, 'Horizontal Interpolation Elapsed Time: ', theTIME / 60.0, 'min', format = '(a, f7.2, 2x, a3)'
+    endelse
+  ;endif
+  ;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+  ;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  ; INTERPOLATE VERTICALLY
+
+  ; SET VARIOUS ARRAYS USED IN THE INTERPOLATIONS
+  ; 3D variables
+  gom_salt = make_array([size(mask_rho, /DIMENSIONS), KPNTS], /DOUBLE, VALUE = 0)
+  gom_temp = gom_salt
+  gom_uvel = make_array([size(mask_u, /DIMENSIONS), KPNTS], /DOUBLE, VALUE = 0)
+  gom_vvel = make_array([size(mask_v, /DIMENSIONS), KPNTS], /DOUBLE, VALUE = 0)
+
+  ; ---------- SALINITY and TEMPERATURE
+  print, '   Starting the vertical interpolations for Salinity/Temperature at RHO-Points ...'
+  time1 = systime(/seconds)
+
+  ; Define S-curves for vertical coordinate ...
+  ; ROMS k = 1 level is at the bottom and k = kmax at the free surface
+  ; dgrid and mask_rho are always defined at RHO-Points
+  print, '   Computing the sigma levels ...'
+  SGrid, dgrid, KPNTS, mask_rho,                              $
+         Vtran = Vtransform, Vstre = Vstretching,             $
+         s_theta = STHETA, b_theta = BTHETA, tcline = TCLINE, $
+         HC = hc,                                             $
+         r_zarr = r_zgrid, w_zarr = w_zgrid,                  $
+         w_s = ws, w_cs = wcs,                                $
+         r_s = rs, r_cs = rcs,                                $
+         OUT_DEP = dep_grid
+
+  dims = size(dep_grid, /DIMENSIONS)
+  IFLD = dims[0]
+  JFLD = dims[1]
+  for jj = 0L, JFLD - 1 do begin
+    for ii = 0L, IFLD - 1 do begin
+
+      ; land points have mask 0
+      if (ChkForMask(mask_rho_buf[ii, jj], 0) gt 0) then continue
+
+      ; hycom data are written from top to bottom (depths are positive down)
+      ; roms data are written from bottom to top (depths are negative down)
+      ; the function VL_StdZ2SigZ takes care of this ...
+      gom_zlevs = r_zgrid[ii, jj, *]
+
+      ; ---------- SALINITY
+      tmpvals = gom_salt_zlev[ii, jj, *]
+      tmpvals = VL_StdZ2SigZ(tmpvals, hyc_depth, gom_zlevs, dep_grid[ii, jj], $
+                             LSQUADRATIC = use_lsquad, $
+                             QUADRATIC   = use_quad,   $
+                             SPLINE      = use_spline)
+      if (min(where(finite(tmpvals, /NAN) eq 1)) ge 0) then message, 'FOUND NAN VALUE in SALT'
+
+      gom_salt[ii, jj, *] = tmpvals
+
+      ; ---------- TEMPERATURE
+      tmpvals = gom_temp_zlev[ii, jj, *]
+      tmpvals = VL_StdZ2SigZ(tmpvals, hyc_depth, gom_zlevs, dep_grid[ii, jj], $
+                             LSQUADRATIC = use_lsquad, $
+                             QUADRATIC   = use_quad,   $
+                             SPLINE      = use_spline)
+      if (min(where(finite(tmpvals, /NAN) eq 1)) ge 0) then message, 'FOUND NAN VALUE in TEMP'
+
+      gom_temp[ii, jj, *] = tmpvals
+    endfor ; IFLD
+  endfor ; JFLD
+
+  ; ---------- U-VELOCITY
+  print, '   Starting the vertical interpolations for U-velocity at U-Points ...'
+
+  ; Define S-curves for vertical coordinate ...
+  ; ROMS k = 1 level is at the bottom and k = kmax at the free surface
+  ; dgrid and mask_rho are always defined at RHO-Points
+  print, '   Computing the sigma levels ...'
+  SGrid, dgrid, KPNTS, mask_rho,                              $
+         Vtran = Vtransform, Vstre = Vstretching,             $
+         s_theta = STHETA, b_theta = BTHETA, tcline = TCLINE, $
+         r_zarr = r_zgrid, w_zarr = w_zgrid,                  $
+         OUT_DEP = dep_grid, /ULOC
+
+  dims = size(dep_grid, /DIMENSIONS)
+  IFLD = dims[0]
+  JFLD = dims[1]
+  for jj = 0L, JFLD - 1 do begin
+    for ii = 0L, IFLD - 1 do begin
+
+      ; land points have mask 0
+      if (ChkForMask(mask_u_buf[ii, jj], 0) gt 0) then continue
+
+      ; hycom data are written from top to bottom (depths are positive down)
+      ; roms data are written from bottom to top (depths are negative down)
+      ; the function VL_StdZ2SigZ takes care of this ...
+      gom_zlevs = r_zgrid[ii, jj, *]
+
+      tmpvals = gom_uvel_zlev[ii, jj, *]
+      tmpvals = VL_StdZ2SigZ(tmpvals, hyc_depth, gom_zlevs, dep_grid[ii, jj], $
+                             VAL_BOUND   = 0,          $
+                             LSQUADRATIC = use_lsquad, $
+                             QUADRATIC   = use_quad,   $
+                             SPLINE      = use_spline)
+      if (min(where(finite(tmpvals, /NAN) eq 1)) ge 0) then message, 'FOUND NAN VALUE in U-VEL'
+      
+      gom_uvel[ii, jj, *] = tmpvals
+    endfor ; IFLD
+  endfor ; JFLD
+
+  ; calculate ubar
+  gom_ubar = FieldBar(gom_uvel, dep_grid, ZSPACING = - w_zgrid)
+  idxNAN = where(finite(gom_ubar) eq 0, countNAN)
+  if (countNAN ne 0) then gom_ubar[idxNAN] = 0
+  ; ----------
+
+  ; ---------- V-VELOCITY
+  print, '   Starting the vertical interpolations for V-velocity at V-Points ...'
+
+  ; Define S-curves for vertical coordinate ...
+  ; ROMS k = 1 level is at the bottom and k = kmax at the free surface
+  ; dgrid and mask_rho are always defined at RHO-Points
+  print, '   Computing the sigma levels ...'
+  SGrid, dgrid, KPNTS, mask_rho,                              $
+         Vtran = Vtransform, Vstre = Vstretching,             $
+         s_theta = STHETA, b_theta = BTHETA, tcline = TCLINE, $
+         r_zarr = r_zgrid, w_zarr = w_zgrid,                  $
+         OUT_DEP = dep_grid, /VLOC
+
+  dims = size(dep_grid, /DIMENSIONS)
+  IFLD = dims[0]
+  JFLD = dims[1]
+  for jj = 0L, JFLD - 1 do begin
+    for ii = 0L, IFLD - 1 do begin
+
+      ; land points have mask 0
+      if (ChkForMask(mask_v_buf[ii, jj], 0) gt 0) then continue
+
+      ; hycom data are written from top to bottom (depths are positive down)
+      ; roms data are written from bottom to top (depths are negative down)
+      ; the function VL_StdZ2SigZ takes care of this ...
+      gom_zlevs = r_zgrid[ii, jj, *]
+
+      tmpvals = gom_vvel_zlev[ii, jj, *]
+      tmpvals = VL_StdZ2SigZ(tmpvals, hyc_depth, gom_zlevs, dep_grid[ii, jj], $
+                             VAL_BOUND   = 0,          $
+                             LSQUADRATIC = use_lsquad, $
+                             QUADRATIC   = use_quad,   $
+                             SPLINE      = use_spline)
+      if (min(where(finite(tmpvals, /NAN) eq 1)) ge 0) then message, 'FOUND NAN VALUE in V-VEL'
+      
+      gom_vvel[ii, jj, *] = tmpvals
+    endfor ; IFLD
+  endfor ; JFLD
+
+  ; calculate vbar
+  gom_vbar = FieldBar(gom_vvel, dep_grid, ZSPACING = - w_zgrid)
+  idxNAN = where(finite(gom_vbar) eq 0, countNAN)
+  if (countNAN ne 0) then gom_vbar[idxNAN] = 0
+  ; ----------
+
+  ; ---------- make sure that at land masked points the variables are set to zero
+  gom_zeta = ZeroFloatFix( gom_zeta * mask_rho_buf )
+  gom_ubar = ZeroFloatFix( gom_ubar * mask_u_buf )
+  gom_vbar = ZeroFloatFix( gom_vbar * mask_v_buf )
+
+  ; ---------- ; make sure that at land masked points the variables are set to zero
+  for k = 0L, KPNTS - 1 do begin
+    gom_salt[*, *, k] = ZeroFloatFix( reform(gom_salt[*, *, k]) * mask_rho_buf )
+    gom_temp[*, *, k] = ZeroFloatFix( reform(gom_temp[*, *, k]) * mask_rho_buf )
+    gom_uvel[*, *, k] = ZeroFloatFix( reform(gom_uvel[*, *, k]) * mask_u_buf )
+    gom_vvel[*, *, k] = ZeroFloatFix( reform(gom_vvel[*, *, k]) * mask_v_buf )
+  endfor
+
+  time2 = systime(/seconds)
+  theTIME = time2 - time1
+  timeTOL = timeTOL + theTIME
+  ;if (debug gt 0) then begin
+    if (theTIME le 60.0) then begin
+      print, 'Vertical Interpolation Elapsed Time: ', theTIME, 's', format = '(a, f7.2, 2x, a1)'
+    endif else begin
+      print, 'Vertical Interpolation Elapsed Time: ', theTIME / 60.0, 'min', format = '(a, f7.2, 2x, a3)'
+    endelse
+  ;endif
+  ;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+  if (timeTOL le 60.0) then begin
+    print
+    print, 'Total Elapsed Time: ', timeTOL, 's', format = '(a, f7.2, 2x, a1)'
+    print
+  endif else begin
+    print
+    print, 'Total Elapsed Time: ', timeTOL / 60.0, 'min', format = '(a, f7.2, 2x, a3)'
+    print
+  endelse
+
+
+  ;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  ; WRITE THE RESULTS TO THE OUTPUT FILE
+
+  ; in days
+  ;rec_time = START_JULDAY - REF_JULDAY + itm - 1.0
+  rec_time = thisJD - REF_JULDAY
+  
+  ; ---------- CLIMATOLOGY ----------
+  ncdf_varput, ncid_clim, ncdf_varid(ncid_clim, 'clim_time'), rec_time, $
+               OFFSET = [0, iREC], COUNT = [1, 1]
+  ncdf_varput, ncid_clim, ncdf_varid(ncid_clim, 'zeta_time'), rec_time, $
+               OFFSET = [0, iREC], COUNT = [1, 1]
+  ncdf_varput, ncid_clim, ncdf_varid(ncid_clim, 'v2d_time'), rec_time, $
+               OFFSET = [0, iREC], COUNT = [1, 1]
+  ncdf_varput, ncid_clim, ncdf_varid(ncid_clim, 'v3d_time'), rec_time, $
+               OFFSET = [0, iREC], COUNT = [1, 1]
+  ncdf_varput, ncid_clim, ncdf_varid(ncid_clim, 'temp_time'), rec_time, $
+               OFFSET = [0, iREC], COUNT = [1, 1]
+  ncdf_varput, ncid_clim, ncdf_varid(ncid_clim, 'salt_time'), rec_time, $
+               OFFSET = [0, iREC], COUNT = [1, 1]
+
+  ncdf_varput, ncid_clim, ncdf_varid(ncid_clim, 'zeta'), gom_zeta, $
+               OFFSET = [0, 0, iREC], COUNT = [xi_rho, eta_rho, 1]
+  ncdf_varput, ncid_clim, ncdf_varid(ncid_clim, 'ubar'), gom_ubar, $
+               OFFSET = [0, 0, iREC], COUNT = [xi_u, eta_u, 1]
+  ncdf_varput, ncid_clim, ncdf_varid(ncid_clim, 'vbar'), gom_vbar, $
+               OFFSET = [0, 0, iREC], COUNT = [xi_v, eta_v, 1]
+
+  ncdf_varput, ncid_clim, ncdf_varid(ncid_clim, 'u'), gom_uvel, $
+               OFFSET = [0, 0, 0, iREC], COUNT = [xi_u, eta_u, s_rho, 1]
+  ncdf_varput, ncid_clim, ncdf_varid(ncid_clim, 'v'), gom_vvel, $
+               OFFSET = [0, 0, 0, iREC], COUNT = [xi_v, eta_v, s_rho, 1]
+  ncdf_varput, ncid_clim, ncdf_varid(ncid_clim, 'temp'), gom_temp, $
+               OFFSET = [0, 0, 0, iREC], COUNT = [xi_rho, eta_rho, s_rho, 1]
+  ncdf_varput, ncid_clim, ncdf_varid(ncid_clim, 'salt'), gom_salt, $
+               OFFSET = [0, 0, 0, iREC], COUNT = [xi_rho, eta_rho, s_rho, 1]
+
+  ; ---------- BOUNDARY CONDTIONS ----------
+  ncdf_varput, ncid_bry, ncdf_varid(ncid_bry, 'bry_time'), rec_time, $
+               OFFSET = [0, iREC], COUNT = [1, 1]
+  ncdf_varput, ncid_bry, ncdf_varid(ncid_bry, 'zeta_time'), rec_time, $
+               OFFSET = [0, iREC], COUNT = [1, 1]
+  ncdf_varput, ncid_bry, ncdf_varid(ncid_bry, 'v2d_time'), rec_time, $
+               OFFSET = [0, iREC], COUNT = [1, 1]
+  ncdf_varput, ncid_bry, ncdf_varid(ncid_bry, 'v3d_time'), rec_time, $
+               OFFSET = [0, iREC], COUNT = [1, 1]
+  ncdf_varput, ncid_bry, ncdf_varid(ncid_bry, 'temp_time'), rec_time, $
+               OFFSET = [0, iREC], COUNT = [1, 1]
+  ncdf_varput, ncid_bry, ncdf_varid(ncid_bry, 'salt_time'), rec_time, $
+               OFFSET = [0, iREC], COUNT = [1, 1]
+
+  ; ----- ZETA
+  for i_bry = 0, 3 do begin
+    if (BND_DEF[i_bry] gt 0) then begin
+      if (i_bry eq 0) then $
+        ncdf_varput, ncid_bry, ncdf_varid(ncid_bry, 'zeta_west'), $
+                     reform(gom_zeta[0, *]),                      $
+                     OFFSET = [0, iREC], COUNT = [eta_rho, 1]
+
+      if (i_bry eq 1) then $
+        ncdf_varput, ncid_bry, ncdf_varid(ncid_bry, 'zeta_south'), $
+                     reform(gom_zeta[*, 0]),                       $
+                     OFFSET = [0, iREC], COUNT = [xi_rho, 1]
+
+      if (i_bry eq 2) then $
+        ncdf_varput, ncid_bry, ncdf_varid(ncid_bry, 'zeta_east'), $
+                     reform(gom_zeta[xi_rho - 1, *]),             $
+                     OFFSET = [0, iREC], COUNT = [eta_rho, 1]
+
+      if (i_bry eq 3) then $
+        ncdf_varput, ncid_bry, ncdf_varid(ncid_bry, 'zeta_north'), $
+                     reform(gom_zeta[*, eta_rho - 1]),             $
+                     OFFSET = [0, iREC], COUNT = [xi_rho, 1]
+    endif
+  endfor
+
+  ; ----- UBAR
+  for i_bry = 0, 3 do begin
+    if (BND_DEF[i_bry] gt 0) then begin
+      if (i_bry eq 0) then $
+        ncdf_varput, ncid_bry, ncdf_varid(ncid_bry, 'ubar_west'), $
+                     reform(gom_ubar[0, *]),                      $
+                     OFFSET = [0, iREC], COUNT = [eta_u, 1]
+
+      if (i_bry eq 1) then $
+        ncdf_varput, ncid_bry, ncdf_varid(ncid_bry, 'ubar_south'), $
+                     reform(gom_ubar[*, 0]),                       $
+                     OFFSET = [0, iREC], COUNT = [xi_u, 1]
+
+      if (i_bry eq 2) then $
+        ncdf_varput, ncid_bry, ncdf_varid(ncid_bry, 'ubar_east'), $
+                     reform(gom_ubar[xi_u - 1, *]),               $
+                     OFFSET = [0, iREC], COUNT = [eta_u, 1]
+
+      if (i_bry eq 3) then $
+        ncdf_varput, ncid_bry, ncdf_varid(ncid_bry, 'ubar_north'), $
+                     reform(gom_ubar[*, eta_u - 1]),               $
+                     OFFSET = [0, iREC], COUNT = [xi_u, 1]
+    endif
+  endfor
+
+  ; ----- VBAR
+  for i_bry = 0, 3 do begin
+    if (BND_DEF[i_bry] gt 0) then begin
+      if (i_bry eq 0) then $
+        ncdf_varput, ncid_bry, ncdf_varid(ncid_bry, 'vbar_west'), $
+                     reform(gom_vbar[0, *]),                      $
+                     OFFSET = [0, iREC], COUNT = [eta_v, 1]
+
+      if (i_bry eq 1) then $
+        ncdf_varput, ncid_bry, ncdf_varid(ncid_bry, 'vbar_south'), $
+                     reform(gom_vbar[*, 0]),                       $
+                     OFFSET = [0, iREC], COUNT = [xi_v, 1]
+
+      if (i_bry eq 2) then $
+        ncdf_varput, ncid_bry, ncdf_varid(ncid_bry, 'vbar_east'), $
+                     reform(gom_vbar[xi_v - 1, *]),               $
+                     OFFSET = [0, iREC], COUNT = [eta_v, 1]
+
+      if (i_bry eq 3) then $
+        ncdf_varput, ncid_bry, ncdf_varid(ncid_bry, 'vbar_north'), $
+                     reform(gom_vbar[*, eta_v - 1]),               $
+                     OFFSET = [0, iREC], COUNT = [xi_v, 1]
+    endif
+  endfor
+
+  ; ----- U-VEL
+  for i_bry = 0, 3 do begin
+    if (BND_DEF[i_bry] gt 0) then begin
+      if (i_bry eq 0) then $
+        ncdf_varput, ncid_bry, ncdf_varid(ncid_bry, 'u_west'), $
+                     reform(gom_uvel[0, *, *]),                $
+                     OFFSET = [0, 0, iREC], COUNT = [eta_u, s_rho, 1]
+
+      if (i_bry eq 1) then $
+        ncdf_varput, ncid_bry, ncdf_varid(ncid_bry, 'u_south'), $
+                     reform(gom_uvel[*, 0, *]),                 $
+                     OFFSET = [0, 0, iREC], COUNT = [xi_u, s_rho, 1]
+
+      if (i_bry eq 2) then $
+        ncdf_varput, ncid_bry, ncdf_varid(ncid_bry, 'u_east'), $
+                     reform(gom_uvel[xi_u - 1, *, *]),         $
+                     OFFSET = [0, 0, iREC], COUNT = [eta_u, s_rho, 1]
+
+      if (i_bry eq 3) then $
+        ncdf_varput, ncid_bry, ncdf_varid(ncid_bry, 'u_north'), $
+                     reform(gom_uvel[*, eta_u - 1, *]),         $
+                     OFFSET = [0, 0, iREC], COUNT = [xi_u, s_rho, 1]
+    endif
+  endfor
+
+  ; ----- V-VEL
+  for i_bry = 0, 3 do begin
+    if (BND_DEF[i_bry] gt 0) then begin
+      if (i_bry eq 0) then $
+        ncdf_varput, ncid_bry, ncdf_varid(ncid_bry, 'v_west'), $
+                     reform(gom_vvel[0, *, *]),                $
+                     OFFSET = [0, 0, iREC], COUNT = [eta_v, s_rho, 1]
+
+      if (i_bry eq 1) then $
+        ncdf_varput, ncid_bry, ncdf_varid(ncid_bry, 'v_south'), $
+                     reform(gom_vvel[*, 0, *]),                 $
+                     OFFSET = [0, 0, iREC], COUNT = [xi_v, s_rho, 1]
+
+      if (i_bry eq 2) then $
+        ncdf_varput, ncid_bry, ncdf_varid(ncid_bry, 'v_east'), $
+                     reform(gom_vvel[xi_v - 1, *, *]),         $
+                     OFFSET = [0, 0, iREC], COUNT = [eta_v, s_rho, 1]
+
+      if (i_bry eq 3) then $
+        ncdf_varput, ncid_bry, ncdf_varid(ncid_bry, 'v_north'), $
+                     reform(gom_vvel[*, eta_v - 1, *]),         $
+                     OFFSET = [0, 0, iREC], COUNT = [xi_v, s_rho, 1]
+    endif
+  endfor
+
+  ; ----- TEMP
+  for i_bry = 0, 3 do begin
+    if (BND_DEF[i_bry] gt 0) then begin
+      if (i_bry eq 0) then $
+        ncdf_varput, ncid_bry, ncdf_varid(ncid_bry, 'temp_west'), $
+                     reform(gom_temp[0, *, *]),                   $
+                     OFFSET = [0, 0, iREC], COUNT = [eta_rho, s_rho, 1]
+
+      if (i_bry eq 1) then $
+        ncdf_varput, ncid_bry, ncdf_varid(ncid_bry, 'temp_south'), $
+                     reform(gom_temp[*, 0, *]),                    $
+                     OFFSET = [0, 0, iREC], COUNT = [xi_rho, s_rho, 1]
+
+      if (i_bry eq 2) then $
+        ncdf_varput, ncid_bry, ncdf_varid(ncid_bry, 'temp_east'), $
+                     reform(gom_temp[xi_rho - 1, *, *]),          $
+                     OFFSET = [0, 0, iREC], COUNT = [eta_rho, s_rho, 1]
+
+      if (i_bry eq 3) then $
+        ncdf_varput, ncid_bry, ncdf_varid(ncid_bry, 'temp_north'), $
+                     reform(gom_temp[*, eta_rho - 1, *]),          $
+                     OFFSET = [0, 0, iREC], COUNT = [xi_rho, s_rho, 1]
+    endif
+  endfor
+
+  ; ----- SALINITY
+  for i_bry = 0, 3 do begin
+    if (BND_DEF[i_bry] gt 0) then begin
+      if (i_bry eq 0) then $
+        ncdf_varput, ncid_bry, ncdf_varid(ncid_bry, 'salt_west'), $
+                     reform(gom_salt[0, *, *]),                   $
+                     OFFSET = [0, 0, iREC], COUNT = [eta_rho, s_rho, 1]
+
+      if (i_bry eq 1) then $
+        ncdf_varput, ncid_bry, ncdf_varid(ncid_bry, 'salt_south'), $
+                     reform(gom_salt[*, 0, *]),                    $
+                     OFFSET = [0, 0, iREC], COUNT = [xi_rho, s_rho, 1]
+
+      if (i_bry eq 2) then $
+        ncdf_varput, ncid_bry, ncdf_varid(ncid_bry, 'salt_east'), $
+                     reform(gom_salt[xi_rho - 1, *, *]),          $
+                     OFFSET = [0, 0, iREC], COUNT = [eta_rho, s_rho, 1]
+
+      if (i_bry eq 3) then $
+        ncdf_varput, ncid_bry, ncdf_varid(ncid_bry, 'salt_north'), $
+                     reform(gom_salt[*, eta_rho - 1, *]),          $
+                     OFFSET = [0, 0, iREC], COUNT = [xi_rho, s_rho, 1]
+    endif
+  endfor
+  iREC++
+
+  undefine, gom_zeta, gom_salt, gom_temp, gom_uvel, gom_vvel
+  undefine, gom_salt_zlev, gom_temp_zlev, gom_uvel_zlev, gom_vvel_zlev
+endfor ; itm
+
+ncdf_close, ncid_clim
+ncdf_close, ncid_bry
+
+END_TIMECOUNT = systime(/seconds)
+theTIME = END_TIMECOUNT - BEG_TIMECOUNT
+if (theTIME le 60.0) then begin
+  print
+  print, 'Boundary conditions generation time: ', theTIME, 's', format = '(a, f7.2, 2x, a1)'
+  print
+endif else begin
+  print
+  print, 'Boundary conditions generation time: ', theTIME / 60.0, 'min', format = '(a, f7.2, 2x, a3)'
+  print
+endelse
+  
+end

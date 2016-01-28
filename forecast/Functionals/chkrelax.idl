@@ -1,0 +1,54 @@
+
+rtim1 =  0.1d
+rtim2 = 0.1d
+
+cff1 = 1.0 / (rtim1 * 86400.0)
+cff2 = 1.0 / (rtim2 * 86400.0)
+cff3 = alog(cff1 / cff2)
+
+II1 = 0
+II2 = 5
+
+for i = II1, II2 do begin
+  if (i eq II1) then begin
+    wrk = cff1
+    rratio = 0
+  endif else begin
+    rratio = double(i - II1) / double(II2 - II1)
+;    rratio = (i - II1) / (II2 - II1)
+    wrk = cff1 * exp( - rratio * cff3 )
+  endelse
+  wrk1 = (1.0d / wrk) / 86400.0d
+  print, i, rratio, wrk, wrk1, format = '("I = ", i1, 2x, 3f16.10, "WRK = ", 2f16.10)'
+endfor
+
+print
+
+end
+II1 = 1
+II2 = 5
+for i = II1, II2 do begin
+  if (i eq II1) then begin
+    wrk = cff1
+  endif else begin
+    rratio = double(i - II1) / double(II2 - II1)
+    wrk = cff1 * exp( - rratio * cff3 )
+  endelse
+  wrk1 = (1.0d / wrk) / 86400.0d
+  print, i, wrk, wrk1, format = '("I = ", i1, 2x, "WRK = ", 2f16.10)'
+endfor
+
+print
+
+II1 = 0
+II2 = 5
+
+nn = II2 - II1 + 1
+for i = II1, II2 do begin
+  rratio = 1.0d + cos(double(i * !PI) / double(nn))
+  wrk = rratio / (2.0d * 0.1d)
+  wrk1 = (1.0d / wrk)
+  print, i, wrk, wrk1, format = '("I = ", i1, 2x, "WRK = ", 2f16.10)'
+endfor
+
+end

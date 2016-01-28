@@ -1,0 +1,824 @@
+;*******************************************************************************
+; START THE MAIN PROGRAM
+;*******************************************************************************
+CAST_ROOT  = ''
+CAST_BATH  = ''
+CAST_PLOTS = ''
+CAST_OUT   = ''
+
+
+CPU, TPOOL_NTHREADS = 1
+
+
+idl_ERRCODE = 0
+catch, idl_ERRCODE
+if (idl_ERRCODE ne 0) then begin
+  catch, /cancel
+  help, /LAST_MESSAGE
+  exit,  /NO_CONFIRM, STATUS = idl_ERRCODE
+endif
+
+
+BEG_TIMECOUNT = systime(/seconds)
+
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+; Initialize.
+@proj_setup
+
+;REGION = 'Gulf of Mexico'
+REGION = 'GoM (atm.)'
+
+; begin/end dates for the current simulation
+BEG_DATE = '2010/01/01 00:00:00'
+END_DATE = '2010/01/01 00:00:00'
+
+; ----- DOM_NUMB represents the domain number in the input data
+;       data are stored in one file per domain ('', d01, d02, ...)
+DOM_NUMB = 1
+
+dnumber = (n_elements(DOM_NUMB) gt 0) ? fix(DOM_NUMB) : 0
+dom_str = (dnumber gt 0) ? string(dnumber, format = '("_d", i2.2)') : ''
+
+; ----- USE_PARALLEL > 0 means that the IMG_TYPE files will be created
+;       using the GNU parallel program to speed-up the creation of
+;       all the files.
+USE_PARALLEL = 1
+PARA_PROG = 'parallel'
+
+; ----- Parameters for converting the plot image(s) from encapsulated
+;       postscript to any other format. ImageMagick/GraphicsMagick
+;       is used for the conversion.
+;       CONV_PLOTS > 0 means that the IMG_TYPE files will be created
+CONV_PLOTS = 1
+CONV_PROG = 'convert'
+
+; ----- Image size
+PLOT_SIZE = 1150
+IMG_TYPE  = 'jpg'
+; For 1000x792 pixels: -density 400 -geometry 29.40%, based on PLOT_SIZE
+; For  710x562 pixels: -density 400 -geometry 20.87%, based on PLOT_SIZE
+; For  650x515 pixels: -density 400 -geometry 19.12%, based on PLOT_SIZE
+; For  458x363 pixels: -density 400 -geometry 13.47%, based on PLOT_SIZE
+; For    85x68 pixels: -density 400 -geometry  2.51%, based on PLOT_SIZE
+conv_opts = '-flatten -antialias -colorspace RGB -density 400 -geometry 29.40% -quality 100'
+
+; ----- inpPFX represents the prefix to be used in the input file
+;       outPFX represents the prefix to be used in the output file
+inpPFX = 'atm_his_geo'
+outPFX = 'atm'
+
+; ----- INP_DIR directory for the input data files
+;       OUT_DIR directory for the output data files
+INP_DIR = rootDIR
+OUT_DIR = rootDIR
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+; SET VARIOUS VARIABLES FOR THE SUBSEQUENT PLOTS
+draw_speed_arrows = 1
+
+regrid_data    = 0
+
+draw_countries = 0
+draw_states    = 0
+draw_rivers    = 1
+
+; relevant to the shoreline
+draw_shore            = 1
+use_gshhs_coast       = 1 ; <=0 means to use IDL's high resolution shoreline
+gshhs_fill            = 1
+gshhs_outline         = 1
+
+scale_factor = 1.0
+
+m_WET = 1
+nModBarb = (fix(8000.0 / float(MOD_RESOL)) > 1) * 6
+
+; ----- all possible variables to be considered
+PLOT_VARS = 'plot_vars'
+var_plots = strsplit(PLOT_VARS, /EXTRACT)
+
+PLOT_TYPE = VL_StrReplace(strlowcase(PLOT_TYPE), '.', '')
+IMG_TYPE  = VL_StrReplace(strlowcase(IMG_TYPE), '.', '')
+case 1 of
+  (IMG_TYPE eq 'jpeg'): IMG_TYPE = 'jpg'
+  (IMG_TYPE eq 'tiff'): IMG_TYPE = 'tif'
+  else:
+endcase
+if (strcmp(PLOT_TYPE, IMG_TYPE, /FOLD_CASE) eq 1) then CONV_PLOTS = 0
+
+regrid_data = (regrid_data gt 0) ? 1 : 0
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+GetParams, REGION, PlotSize = PLOT_SIZE, Map_Coords = map_coords, $
+           Map_Proj = map_proj
+
+; For the appropriate lake/region to use please check first the file
+; proj_vars.pro and call first the GetParams procedure
+outstr = '/bin/echo -e ' + $
+         '"\n' + String('Running for: ', $
+                        Strupcase(RegionName), format = '(a, 1x, a)') + $
+         '\n" > /dev/stderr'
+Spawn, outstr
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+; The forecast cycle
+FCYCLE = '2014-03-05 00:00:00'
+;fcycle_str = string(FCYCLE, format = '(i2.2)')
+fcycle_str = strtrim(string(FCYCLE), 2)
+
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+; Determine the number of requested records and their corresponding timestamps
+TIME_MAX = Get_Dates(BEG_DATE, END_DATE, $
+                     YR_OUT = curYR, MO_OUT = curMO, DA_OUT = curDA, $
+                     HR_OUT = curHR, MN_OUT = curMN, SC_OUT = curSC, $
+                     HR_INTERVALS = indgen(24), $
+                     MN_INTERVALS = [ 0 ], $
+                     YEAR_DAY   = year_day,  $
+                     WRF_STAMP = wrf_stamp)
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+; Read the GOM bathymetry next ...
+; This is needed because we interpolate the WRF filds to the GoM domain
+if (regrid_data gt 0) then begin
+  roms_bath = FilePath('romsgrd' + dom_str + '.nc', Root_Dir = bathDIR)
+
+  ;print, 'Reading the bathymetry file: ' + roms_bath
+  Ncdf_ReadBath_Roms, roms_bath
+
+  ; The WGS64 lat/lon pairs
+  VL_Sphere2WGS, longrid, latgrid, $
+                 LONS_OUT = longrid, LATS_OUT = latgrid
+endif
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+; Get the gshhs full filename - needed
+inp_gshhs = Get_GomGshhs(USE_RESOL, USE_GSHHS_FILE, $
+                         GSHHS_LEVEL = gshhs_level, $
+                         GSHHS_AREA  = gshhs_area)
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+; Initialize plots
+InitProjPlots, resolution = [PLOT_XSIZE, PLOT_YSIZE], type = PLOT_TYPE, $
+                            plotmarg = [0, 70, 0, 0],                   $
+                            tboff = [0, 0, 0, 0],                       $
+                            pboff = [0, 0, 0, 0],                       $
+                            TBHeight = 90, plottb = 1,                  $
+                            landscape = 0, margin = 0.0
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+; ----- Supported variables
+SetDev, /opendev
+  supp_struct = VarInfo_Wrf()
+SetDev, /closedev
+
+add_vars = [ 'WSPEED' ]
+valid_vars = [ add_vars, reform(supp_struct.nam) ]
+; -----
+
+if (n_elements(var_plots) eq 0) then begin
+  message, 'no valid variables were defined in "var_plots"'
+endif else begin
+  check_vars = strarr(n_elements(var_plots))
+  for ivar = 0L, n_elements(var_plots) - 1 do begin
+     var_name = var_plots[ivar]
+     idx = (where(strcmp(valid_vars, var_name, /FOLD_CASE) eq 1, count))[0]
+     if (count ne 0) then check_vars[ivar] = strupcase(valid_vars[idx])
+  endfor
+  if (strcompress(strjoin(check_vars, /SINGLE), /REMOVE_ALL) eq '') then begin
+    message, 'no valid WRF variables were defined in "var_plots"'
+  endif
+  check_vars = check_vars[where(check_vars ne '')]
+  var_plots = check_vars[uniq(check_vars, sort(check_vars))]
+endelse
+
+if (USE_PARALLEL gt 0) then begin
+  para_dirs = ''
+  for ivar = 0L, n_elements(var_plots) - 1 do begin
+    tmp_str = (outPFX ne '') ? outPFX + '_' + var_plots[ivar] : var_plots[ivar]
+    para_dirs = para_dirs + ' ' + FilePath(tmp_str, Root_Dir = OUT_DIR)
+  endfor
+  para_dirs = strsplit(para_dirs, /EXTRACT)
+endif
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+; Loop through the files found and perform all necessary calculations
+iBEG = 0L
+iEND = TIME_MAX - 1
+nDATFILES = 0L
+
+for ifile = iBEG, iEND do begin
+  curYR_str = strtrim(string(curYR[ifile], format = '(i4.4)'), 2)
+
+  ; ----- Check for the existence of the WRF input file(s)
+  ; (A) The current file
+  tmp_str = (inpPFX ne '') $
+              ? inpPFX + dom_str + '_' + wrf_stamp[ifile] + '.nc' $
+              : dom_str + wrf_stamp[ifile] + '.nc'
+  inp_file = FilePath(tmp_str, Root_Dir = INP_DIR)
+
+  if (not readFILE(inp_file)) then begin
+   ;print, 'skipping the data input file:' + inp_file
+   continue
+  endif else begin
+    print, 'working on the data input file: ' + inp_file
+    nDATFILES = nDATFILES + 1
+  endelse
+
+  ; (B) The previous file
+  if (ifile eq 0) then begin
+    pfile = ifile
+    pinp_file = inp_file
+  endif else begin
+    for pfile = ifile-1, iBEG, -1 do begin
+      tmp_str = (inpPFX ne '') $
+                  ? inpPFX + dom_str + '_' + wrf_stamp[pfile] + '.nc' $
+                  : dom_str + wrf_stamp[pfile] + '.nc'
+      pinp_file = FilePath(tmp_str, Root_Dir = INP_DIR)
+      if (readFILE(pinp_file)) then break
+    endfor
+  endelse
+
+  ; ----- Input file(s)
+  ncid = ncdf_open(inp_file, /NOWRITE)
+  pncid = ncdf_open(pinp_file, /NOWRITE)
+
+  ; ----------
+  ; Get the required dimensions
+  undefine, west_east, south_north, bottom_top, nREC
+  void = Ncdf_GetDimID(ncid, 'west_east', west_east, /ERROR)
+  void = Ncdf_GetDimID(ncid, 'south_north', south_north, /ERROR)
+  void = Ncdf_GetDimID(ncid, 'Time', nREC, /ERROR)
+  void = Ncdf_GetDimID(ncid, 'bottom_top', bottom_top, /ERROR)
+
+  nLEVS = bottom_top
+  ; ----------
+
+  ; Only one time record per file is allowed for now
+  if (nREC ne 1) then begin
+    message, 'more than one time record found in ' + inp_file, /INFORMATIONAL
+    message, 'only one time record is allowed for now'
+  endif
+
+  ; ----------
+  ; Get the current time from the data file
+  void = Ncdf_GetData(ncid, 'Times', TimeStr, /ERROR)
+
+  pos = stregex(TimeStr, '[0-9]+', LENGTH = len)
+  if (len ne 4) then $
+    message, 'could not determine the year from TimeStr = ' + TimeStr
+  str_time = strsplit(strtrim(strmid(TimeStr, pos), 2), '-_: ', /EXTRACT)
+
+  myYR = fix(str_time[0])
+  myMO = fix(str_time[1])
+  myDA = fix(str_time[2])
+  myHR = fix(str_time[3])
+  myMN = fix(str_time[4])
+  mySC = fix(str_time[5])
+  myJD = julday(myMO, myDA, myYR, myHR, myMN, mySC)
+  ; ----------
+
+  ; ----------
+  ; Get the time from the previous data file
+  void = Ncdf_GetData(pncid, 'Times', TimeStr, /ERROR)
+
+  pos = stregex(TimeStr, '[0-9]+', LENGTH = len)
+  if (len ne 4) then $
+    message, 'could not determine the year from TimeStr = ' + TimeStr
+  str_time = strsplit(strtrim(strmid(TimeStr, pos), 2), '-_: ', /EXTRACT)
+
+  pmyYR = fix(str_time[0])
+  pmyMO = fix(str_time[1])
+  pmyDA = fix(str_time[2])
+  pmyHR = fix(str_time[3])
+  pmyMN = fix(str_time[4])
+  pmySC = fix(str_time[5])
+  pmyJD = julday(pmyMO, pmyDA, pmyYR, pmyHR, pmyMN, pmySC)
+  ; ----------
+
+  ; ----------
+  ; Get the mask and lat/lon from the data file
+  ;LANDMASK (1 FOR LAND, 0 FOR WATER)
+  void = Ncdf_GetData(ncid, 'LANDMASK', land, /ERROR)
+  void = Ncdf_GetData(ncid, 'XLONG', xlon, /ERROR)
+  void = Ncdf_GetData(ncid, 'XLAT',  xlat, /ERROR)
+  ; ----------
+
+  if (regrid_data le 0) then begin
+    longrid = xlon
+    latgrid = xlat
+  endif else begin
+    hlon = reform(xlon[*, 0])
+    hlat = reform(xlat[0, *])
+    glon = reform(longrid[*, 0])
+    glat = reform(latgrid[0, *])
+  endelse
+
+  Get_DomainStats, longrid, /XDIR, $
+                   DAVE_VAL = DLON_MEAN
+  Get_DomainStats, latgrid, /YDIR, $
+                   DAVE_VAL = DLAT_MEAN
+
+  pl_date = string(myMO, myDA, myYR, myHR, myMN, mySC, $
+            format = '(i2.2, "/", i2.2, "/", i4.4, 2x, i2.2, ":", i2.2, ":", i2.2)')
+  pl_fname_date = string(myYR, myMO, myDA, myHR, format = '(i4.4, i2.2, i2.2, i2.2)')
+
+  for ivar = 0, n_elements(var_plots) - 1 do begin
+    SetDev, /opendev
+
+    undefine, var_id, var_name, var_type, dfill, lev_text
+    undefine, pl_data, pl_title, pl_unit, pl_range, pl_ticks
+    undefine, bnd_LOW, bnd_HIGH, nClrBot, nClrTop, clr_tbl, clr_LOW, clr_HIGH
+
+    var_name = strupcase(var_plots[ivar])
+
+    draw_arrows = 0
+    draw_fail_text = 0
+    iSURF = 0
+    nClrLevs = 51
+    case 1 of
+      (var_name eq 'WSPEED'): $
+        begin
+          var_id = 1
+          tmp_id = Get_SupportedWrfVar(ncid, 'u10', supp_struct, $
+                                       LVTEXT = lev_text, $
+                                       VDATA = Utmp, VTYPE = var_type, $
+                                       VTITLE = pl_title, $
+                                       VUNIT = pl_unit, $
+                                       VRANGE = pl_range, VDRANGE = pl_ticks, $
+                                       VBDRY = pl_bdry, VCLRTBL = clr_tbl, $
+                                       VCLOW = clr_LOW, VCHIGH = clr_HIGH, $
+                                       VNLOW = nClrBot, VNHIGH = nClrTop)
+          if (tmp_id lt 0) then var_id = tmp_id
+
+          tmp_id = Get_SupportedWrfVar(ncid, 'v10', supp_struct, $
+                                       LVTEXT = lev_text, $
+                                       VDATA = Vtmp, VTYPE = var_type, $
+                                       VTITLE = pl_title, $
+                                       VUNIT = pl_unit, $
+                                       VRANGE = pl_range, VDRANGE = pl_ticks, $
+                                       VBDRY = pl_bdry, VCLRTBL = clr_tbl, $
+                                       VCLOW = clr_LOW, VCHIGH = clr_HIGH, $
+                                       VNLOW = nClrBot, VNHIGH = nClrTop)
+          if (tmp_id lt 0) then var_id = tmp_id
+
+          if (var_id ge 0) then begin
+            draw_arrows = (draw_speed_arrows gt 0) ? 1 : 0
+
+            if (regrid_data gt 0) then begin
+              Utmp = VL_ReGrid(Utmp, hlon, hlat, glon, glat)
+              Vtmp = VL_ReGrid(Vtmp, hlon, hlat, glon, glat)
+            endif
+
+            if (draw_arrows gt 0) then begin
+              locBarb = GetBarbLoc(longrid, NBARB = nbarb, NMOD = nModBarb, /ALL)
+              idx = where( (longrid[locBarb] ge map_coords[1]) and $
+                           (longrid[locBarb] le map_coords[3]) and $
+                           (latgrid[locBarb] ge map_coords[0]) and $
+                           (latgrid[locBarb] le map_coords[2]), count )
+
+              uu = Utmp[locBarb[idx]]
+              vv = Vtmp[locBarb[idx]]
+              lons = longrid[locBarb[idx]]
+              lats = latgrid[locBarb[idx]]
+            endif
+
+            pl_data = sqrt(Utmp * Utmp + Vtmp * Vtmp)
+          endif else begin
+            draw_arrows = 0
+            pl_data = make_array(size(longrid, /DIMENSIONS), /FLOAT, VALUE = !VALUES.F_NAN)
+            draw_fail_text = 1
+          endelse
+
+          ; plot variables
+          pl_title = (pl_unit eq '') $
+            ? 'Wind Speed at 10 m' $
+            : 'Wind Speed at 10 m' + ' (' + pl_unit + ')'
+          pl_range = [0.0, 20.0]
+          pl_ticks = 2.0
+
+          bnd_LOW  = 0
+          bnd_HIGH = 1
+        end
+      (var_name eq 'CRAIN'): $
+        begin
+          var_id = 1
+          tmp_id = Get_SupportedWrfVar(ncid, 'crain', supp_struct, $
+                                       LVTEXT = lev_text, $
+                                       VDATA = crain, VTYPE = var_type, $
+                                       VTITLE = pl_title, $
+                                       VUNIT = pl_unit, $
+                                       VRANGE = pl_range, VDRANGE = pl_ticks, $
+                                       VBDRY = pl_bdry, VCLRTBL = clr_tbl, $
+                                       VCLOW = clr_LOW, VCHIGH = clr_HIGH, $
+                                       VNLOW = nClrBot, VNHIGH = nClrTop)
+          if (tmp_id lt 0) then var_id = tmp_id
+
+          tmp_id = Get_SupportedWrfVar(pncid, 'crain', supp_struct, $
+                                       LVTEXT = lev_text, $
+                                       VDATA = pcrain, VTYPE = var_type, $
+                                       VTITLE = pl_title, $
+                                       VUNIT = pl_unit, $
+                                       VRANGE = pl_range, VDRANGE = pl_ticks, $
+                                       VBDRY = pl_bdry, VCLRTBL = clr_tbl, $
+                                       VCLOW = clr_LOW, VCHIGH = clr_HIGH, $
+                                       VNLOW = nClrBot, VNHIGH = nClrTop)
+          if (tmp_id lt 0) then var_id = tmp_id
+
+          hr_str = strcompress(string((myJD - pmyJD) * 24.0, format = '(i8)'), /REMOVE_ALL) + '-hr'
+          pl_title = hr_str + ' ' + pl_title
+
+          if (var_id ge 0) then begin
+            pl_data = crain - pcrain
+          endif else begin
+            pl_data = make_array(size(longrid, /DIMENSIONS), /FLOAT, VALUE = !VALUES.F_NAN)
+            draw_fail_text = 1
+          endelse
+        end
+      else: $
+        begin
+          var_id = Get_SupportedWrfVar(ncid, var_name, supp_struct, LEVEL = iSURF, $
+                                       LVTEXT = lev_text, $
+                                       VDATA = pl_data, VTYPE = var_type, $
+                                       VTITLE = pl_title, $
+                                       VUNIT = pl_unit, $
+                                       VRANGE = pl_range, VDRANGE = pl_ticks, $
+                                       VBDRY = pl_bdry, VCLRTBL = clr_tbl, $
+                                       VCLOW = clr_LOW, VCHIGH = clr_HIGH, $
+                                       VNLOW = nClrBot, VNHIGH = nClrTop)
+
+          if (var_id lt 0) then begin
+            pl_data = make_array(size(longrid, /DIMENSIONS), /FLOAT, VALUE = !VALUES.F_NAN)
+            draw_fail_text = 1
+          endif
+        end
+    endcase
+
+    if (n_elements(bnd_LOW) eq 0)  then  bnd_LOW = pl_bdry[0]
+    if (n_elements(bnd_HIGH) eq 0) then  bnd_HIGH = pl_bdry[1]
+
+    pl_fname = (outPFX ne '') $
+                 ? outPFX + '_' + strtrim(var_plots[ivar], 2) $
+                 : strtrim(var_plots[ivar], 2)
+    plot_name = pl_fname + dom_str + '-' + pl_fname_date + '.' + PLOT_TYPE
+
+    ;plot_title = RegionName +  ' : ' + pl_title
+    plot_title = pl_title
+    plot_data = pl_data[*, *]
+
+    if (regrid_data gt 0) then begin
+      if (var_name ne 'WSPEED') then begin
+        plot_data = VL_ReGrid(plot_data, hlon, hlat, glon, glat)
+      endif
+    endif
+
+    ; some statistics
+    ; limit the statistics within the image visible area
+    idx = where( (longrid ge map_coords[1]) and $
+                 (longrid le map_coords[3]) and $
+                 (latgrid ge map_coords[0]) and $
+                 (latgrid le map_coords[2]), count )
+    pl_maxv = max(plot_data[idx], MIN = pl_minv, /NAN)
+    pl_avev = mean(plot_data[idx], /NAN)
+
+    ; first create the ouput directory
+    plot_dir = FilePath(pl_fname, Root_Dir = OUT_DIR)
+    make_dir, plot_dir
+
+    plot_file = FilePath(plot_name, Root_Dir = plot_dir)
+    print, 'creating the plot file: ' + plot_file
+
+    ; ----- for the contour plots
+    min_lev = min(pl_range, MAX = max_lev)
+    del_lev = float(max_lev - min_lev) / float(nClrLevs - 1)
+    lev_vals = min_lev + indgen(nClrLevs) * del_lev
+    off_lev = del_lev / 100.0
+    min_dat = min([lev_vals, pl_data[*]], /NAN) - off_lev
+    max_dat = max(lev_vals) + off_lev
+
+    ; ----- for the colorbar
+    lev_div = round(float(max_lev - min_lev) / float(pl_ticks))
+    lev_ticks = min_lev + indgen(lev_div + 1) * pl_ticks
+    min_lev_ticks = min(lev_ticks, MAX = max_lev_ticks)
+    lev_ticks = strcompress(string(lev_ticks, format = '(f12.2)'), /REMOVE_ALL)
+
+    ; ----- Manipulate final plot data for visualization
+    ;       Rain: eliminate the points (NaN) where the rain is le min_lev
+    if ( (strmatch(var_type, '*RAIN*', /FOLD_CASE) eq 1) ) then begin
+      idx = where(plot_data le min_lev, count)
+      if (count ne 0) then plot_data[idx] = !VALUES.F_NAN
+    endif
+
+    ; Load the color table for the subsequent plots
+    LoadColors, color_map = clr_tbl, RED, GREEN, BLUE, $
+                LOW_IDX = low_idx, HIGH_IDX = high_idx
+    low_idx  = low_idx + nClrBot
+    high_idx = high_idx - nClrTop
+    my_red   = congrid(RED[low_idx:high_idx], nClrLevs)
+    my_green = congrid(GREEN[low_idx:high_idx], nClrLevs)
+    my_blue  = congrid(BLUE[low_idx:high_idx], nClrLevs)
+
+    my_low   = transpose(cgColor(clr_LOW, /Triple))
+    my_high  = transpose(cgColor(clr_HIGH, /Triple))
+    if ((bnd_LOW le 0) and (bnd_HIGH le 0)) then begin
+      my_red1   = my_red
+      my_green1 = my_green
+      my_blue1  = my_blue
+    endif else begin
+      if ((bnd_LOW gt 0) and (bnd_HIGH gt 0)) then begin
+        my_red1   = [ my_low [0], my_red, my_high[0] ]
+        my_green1 = [ my_low [1], my_green, my_high[1] ]
+        my_blue1  = [ my_low [2], my_blue, my_high[2] ]
+      endif else begin
+        if (bnd_LOW gt 0) then begin
+          my_red1   = [ my_low [0], my_red ]
+          my_green1 = [ my_low [1], my_green ]
+          my_blue1  = [ my_low [2], my_blue ]
+        endif
+        if (bnd_HIGH gt 0) then begin
+          my_red1   = [ my_red, my_high[0] ]
+          my_green1 = [ my_green, my_high[1] ]
+          my_blue1  = [ my_blue, my_high[2] ]
+        endif
+      endelse
+    endelse
+    LoadPalette1 = [ transpose(my_red1), transpose(my_green1), transpose(my_blue1) ]
+    LoadPalette  = [ transpose(my_red), transpose(my_green), transpose(my_blue) ]
+
+    if (!D.NAME eq 'PS') then device, filename = plot_file, scale = scale_factor
+    erase
+
+    ; initialize the map - do not draw anything
+    MakeMap, projection = MapProj, lb_size = 0.7, $
+            /set, box_axes = 1
+
+    ;################################################################################
+    ; Draw the shoreline
+    ;################################################################################
+    if (draw_shore gt 0) then begin
+      if (use_gshhs_coast gt 0) then begin
+        if ((gshhs_fill gt 0) or (gshhs_outline gt 0)) then begin
+          ;land_color = 'Sandy Brown'
+          land_color = 'Moccasin'
+          water_color = 'Sky Blue'
+          cgMap_GSHHS, inp_gshhs, color = 'Black',                 $
+                               level = gshhs_level, minarea = gshhs_area,          $
+                               land_color = land_color, water_color = water_color, $
+                               fill = gshhs_fill, outline = 0
+        endif
+      endif else begin
+        MakeMap, projection = MapProj, lb_size = 0.7, $
+                 no_grid = 1, no_labels = 1, box_axes = 0, noframe = 1, /coasts
+      endelse
+    endif
+
+    ;################################################################################
+    ; Draw the contoured data
+    ;################################################################################
+    if ((bnd_LOW le 0) and (bnd_HIGH le 0)) then begin
+      cgContour, plot_data, longrid, latgrid, $
+                 levels = lev_vals, $
+                 PALETTE = LoadPalette1, olevels = olevels, $
+                 c_labels = 0, c_thick = 1.0, $
+                 /overplot, /cell_fill, /closed, /noerase
+    endif else begin
+      if ((bnd_LOW gt 0) and (bnd_HIGH gt 0)) then begin
+        cgContour, plot_data, longrid, latgrid, $
+                   levels = [min_dat, lev_vals, max_dat], $
+                   PALETTE = LoadPalette1, olevels = olevels, $
+                   c_labels = 0, c_thick = 1.0, $
+                   /overplot, /cell_fill, /closed, /noerase
+      endif else begin
+        if (bnd_LOW gt 0) then begin
+          cgContour, plot_data, longrid, latgrid, $
+                     levels = [min_dat, lev_vals], $
+                     PALETTE = LoadPalette1, olevels = olevels, $
+                     c_labels = 0, c_thick = 1.0, $
+                     /overplot, /cell_fill, /closed, /noerase
+        endif
+        if (bnd_HIGH gt 0) then begin
+          cgContour, plot_data, longrid, latgrid, $
+                     levels = [lev_vals, max_dat], $
+                     PALETTE = LoadPalette1, olevels = olevels, $
+                     c_labels = 0, c_thick = 1.0, $
+                     /overplot, /cell_fill, /closed, /noerase
+        endif
+      endelse
+    endelse
+
+    if (draw_arrows gt 0) then begin
+      arr_len = 0.90 * max([DLON_MEAN, DLAT_MEAN]) * nModBarb
+      arr_head = 0.5 * (min([!D.X_VSIZE, !D.X_VSIZE]) / 64.0)
+      VL_MapVector, uu, vv, lons, lats, $
+                COLOR = 'Black',        $
+                PALETTE = LoadPalette1, $
+                THICK = 2.0,            $
+                HTHICK = 1.5,           $
+                HSIZE = arr_head,       $
+                LENGTH = arr_len,       $
+                SOLID = 0
+    endif
+
+    ;################################################################################
+    ; Draw the shoreline
+    ;################################################################################
+    if (draw_shore gt 0) then begin
+      if (use_gshhs_coast gt 0) then begin
+        if ((gshhs_fill gt 0) or (gshhs_outline gt 0)) then begin
+          ;land_color = 'Sandy Brown'
+          land_color = 'Moccasin'
+          water_color = 'Sky Blue'
+          cgMap_GSHHS, inp_gshhs, color = 'Black',                 $
+                               level = gshhs_level, minarea = gshhs_area,          $
+                               land_color = land_color, water_color = water_color, $
+                               fill = 0, outline = gshhs_outline
+        endif
+      endif else begin
+        MakeMap, projection = MapProj, lb_size = 0.7, $
+                 no_grid = 1, no_labels = 1, box_axes = 0, noframe = 1, /coasts
+      endelse
+    endif
+
+    ;################################################################################
+    ; Draw the boxed frame of the map
+    ;################################################################################
+    MakeMap, projection = MapProj, lb_size = 0.7, $
+             no_grid = 0, no_labels = 0, box_axes = 1,                $
+             usa = draw_states, countries = draw_countries, rivers = draw_rivers
+
+    ;################################################################################
+    ; Draw the corresponding colorbar
+    ;################################################################################
+    as = GetAspect(/NORMAL)
+    barXoff = MapPlotAreaBox[0]
+    barYoff = barXoff * as 
+    barX0 = barXoff
+    barX1 = 1.0 - barXoff
+    barY0 = 2.0 * barYoff
+    barY1 = MapPlotAreaBox[1] - 2.0 * barYoff
+
+    barpos = [barX0, barY0, barX1, barY1]
+    if ((bnd_LOW le 0) and (bnd_HIGH le 0)) then begin
+      cgColorbar, position = barpos, charsize = 0.9, PALETTE = LoadPalette, $
+                  DIVISIONS = lev_div, $
+                  TICKLEN = 0.29, MINOR = 5, RANGE = [min_lev_ticks, max_lev_ticks]
+    endif else begin
+      if ((bnd_LOW gt 0) and (bnd_HIGH gt 0)) then begin
+        cgColorbar, position = barpos, charsize = 0.9, PALETTE = LoadPalette, $
+                    DIVISIONS = lev_div, $
+                    TICKLEN = 0.29, MINOR = 5, RANGE = [min_lev_ticks, max_lev_ticks], $
+                    OOB_FACTOR = 0.75, OOB_LOW = clr_LOW, OOB_HIGH = clr_HIGH
+      endif else begin
+        if (bnd_LOW gt 0) then begin
+          cgColorbar, position = barpos, charsize = 0.9, PALETTE = LoadPalette, $
+                      DIVISIONS = lev_div, $
+                      TICKLEN = 0.29, MINOR = 5, RANGE = [min_lev_ticks, max_lev_ticks], $
+                      OOB_FACTOR = 0.75, OOB_LOW = clr_LOW
+        endif
+        if (bnd_HIGH gt 0) then begin
+          cgColorbar, position = barpos, charsize = 0.9, PALETTE = LoadPalette, $
+                      DIVISIONS = lev_div, $
+                      TICKLEN = 0.29, MINOR = 5, RANGE = [min_lev_ticks, max_lev_ticks], $
+                      OOB_FACTOR = 0.75, OOB_HIGH = clr_HIGH
+        endif
+      endelse
+    endelse
+
+    ;################################################################################
+    ; Draw the plot titles
+    ;################################################################################
+    txt_maxv = strtrim(string(ZeroFloatFix(pl_maxv), pl_unit, format = '(f12.3, 1x, a0)'), 2)
+    txt_minv = strtrim(string(ZeroFloatFix(pl_minv), pl_unit, format = '(f12.3, 1x, a0)'), 2)
+    txt_avev = strtrim(string(ZeroFloatFix(pl_avev), pl_unit, format = '(f12.3, 1x, a0)'), 2)
+    
+    txt_title = plot_title
+    txt_cycle = 'Forecast Cycle: ' + fcycle_str + ' UTC'
+    txt_date  = pl_date + ' UTC'
+    txt_dom   = (dnumber gt 1) ? string(dnumber, format = '("Nested Domain ", i2.2)') : ''
+
+    ;l_text = ['', lev_text, txt_dom]
+    l_text = ['', '', txt_dom]
+    if (strcompress(strjoin(l_text, /SINGLE), /REMOVE_ALL) ne '') then begin
+      VL_DrawPlotTitles, [txt_date, txt_cycle, txt_title], $
+                         COLOR = ['Red', 'Navy', 'Red'], $
+                         TL1 = l_text, $
+                         CL1 = 'Red', $
+                         TR1 = ['min.:', 'mean:', 'max.:'], $
+                         VR1 = [txt_minv, txt_avev, txt_maxv], $
+                         CR1 = 'Black', $
+                         /LLOGO, LOGO_FILE = 'images/gomfs-logo2-75x75.jpg'
+    endif else begin
+      VL_DrawPlotTitles, [txt_date, txt_cycle, txt_title], $
+                         COLOR = ['Red', 'Navy', 'Red'], $
+                         TR1 = ['min.:', 'mean:', 'max.:'], $
+                         VR1 = [txt_minv, txt_avev, txt_maxv], $
+                         CR1 = 'Black', $
+                         /LLOGO, LOGO_FILE = 'images/gomfs-logo2-75x75.jpg'
+    endelse
+
+    ;################################################################################
+    ; Draw the domain legend
+    ;################################################################################
+
+
+    ;################################################################################
+    ; Draw the fail text if defined
+    ;################################################################################
+    if (draw_fail_text gt 0) then begin
+      fail_text = 'Variable Error'
+      xf = mean([map_coords[1], map_coords[3]])
+      yf = mean([map_coords[0], map_coords[2]])
+      fail_text = !D.NAME eq 'PS' ? TextFont(fail_text, 3) : TextFont(fail_text, 8)
+      xyouts, xf, yf, fail_text, charsize = 5.0,     $
+              alignment = 0.5, orientation = 45.0,   $
+              color = GetColor('Medium Gray'), /data
+    endif
+
+    SetDev, /closedev
+
+    ;------------------------------
+    ; Convert to JPEG using ImageMagick
+    if ( (CONV_PLOTS gt 0) and (USE_PARALLEL le 0) ) then begin
+      conv_path = file_dirname(plot_file)
+      conv_file = file_basename(plot_file, '.' + PLOT_TYPE) + '.jpg'
+      conv_file = FilePath(conv_file, Root_Dir = conv_path)
+      command = CONV_PROG + ' ' + conv_opts + ' ' + plot_file + ' ' + conv_file
+      spawn, command, result, error_result, EXIT_STATUS = failure
+      if (failure ne 0) then begin
+        print, error_result
+        message, CONV_PROG + ' command failed'
+      endif
+    endif
+  endfor ; ivar
+
+  ncdf_close, ncid
+  ncdf_close, pncid
+endfor ; ifile
+
+;------------------------------
+; Convert to JPEG using ImageMagick and the GNU Parallel
+if ( (nDATFILES gt 0) and (CONV_PLOTS gt 0) and (USE_PARALLEL gt 0) ) then begin
+  setenv, 'MAGICK_THREAD_LIMIT=1'
+  setenv, 'OMP_NUM_THREADS=1'
+  PARA_DEF_OPTS = '--gnu --no-run-if-empty -j10'
+  for idir = 0L, n_elements(para_dirs) - 1 do begin
+    par_log = file_basename(para_dirs[idir]) + '.log'
+    par_files = file_basename(file_search(para_dirs[idir], '*.' + PLOT_TYPE))
+    par_files = strjoin(par_files, ' ', /SINGLE)
+
+    PARA_OPTS = PARA_DEF_OPTS + ' --joblog ' + par_log
+    PARA_OPTS = PARA_OPTS + ' --resume-failed --retries 3'
+
+    pushd, para_dirs[idir]
+      file_delete, par_log, /ALLOW_NONEXISTENT, /QUIET
+
+      command = PARA_PROG + ' ' + PARA_OPTS
+      command = command + ' ' + CONV_PROG + ' ' + conv_opts + ' {} ' + '{.}.jpg'
+      command = command + ' ::: ' + par_files
+
+      spawn, command, result, error_result, EXIT_STATUS = failure
+      file_delete, par_log, /ALLOW_NONEXISTENT, /QUIET
+
+      if (failure ne 0) then begin
+        print
+        print, error_result
+        message, 'parallel command failed'
+        print
+      endif
+    popd
+  endfor
+endif
+
+
+END_TIMECOUNT = systime(/seconds)
+theTIME = END_TIMECOUNT - BEG_TIMECOUNT
+if (theTIME le 60.0) then begin
+  print, '----------------------------------------'
+  print, 'WRF datamap variables: ' + strjoin(var_plots, ', ', /SINGLE)
+  print, 'WRF datamap plots generation time: ', theTIME, 's', format = '(a, f7.2, 2x, a1)'
+  print, '----------------------------------------'
+endif else begin
+  print
+  print, '----------------------------------------'
+  print, 'WRF datamap variables: ' + strjoin(var_plots, ', ', /SINGLE)
+  print, 'WRF datamap plots generation time: ', theTIME / 60.0, 'min', format = '(a, f7.2, 2x, a3)'
+  print, '----------------------------------------'
+endelse
+
+end

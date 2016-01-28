@@ -1,0 +1,2112 @@
+# Author:  Panagiotis Velissariou <pvelissariou@fsu.edu>
+#                                 <velissariou.1@osu.edu>
+# Version: 1.3
+#
+# Version - 1.3 Thu Jul 17 2014
+# Version - 1.2 Fri Jul 26 2013
+# Version - 1.1 Sun Jul 21 2013
+# Version - 1.0 Thu Jun 27 2013
+
+
+#------------------------------------------------------------
+# SOURCE THE UTILITY FUNCTIONS
+#
+if [ -f functions_common ]; then
+  source functions_common
+else
+  echo " ### ERROR:: in functions_run"
+  echo "     Cannot locate the file: functions_common"
+  echo "     Exiting now ..."
+  echo
+  exit 1
+fi
+#------------------------------------------------------------
+
+
+# -------------------------------------------------------
+# ParseArgs()
+# Usage:      ParseArgs args
+# Parameters: args = the script options
+# Returns:    0
+# Echoes:     NONE
+#
+# Gets the supplied options to the script.
+# -------------------------------------------------------
+ParseArgs()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local -i opt_flg=0
+  local opt_opt opt_arg
+
+  local my_CASEID my_DATDIR my_MODFILES my_INP my_HOSTFILE
+  local my_SIMBEG my_SIMEND my_CPUS my_INIT
+
+  while test $# -gt 0; do
+    case "${1}" in
+      -*=*)
+        opt_opt="`toLOWER "\`echo "${1}" | sed 's/=.*//'\`"`"
+        opt_arg="`echo "${1}" | sed -e 's/.*=//'`"
+        ;;
+      -*)
+        opt_opt="`toLOWER "-${1}"`"
+        opt_opt="`echo "${opt_opt}" | sed -e 's/^--/-/'`"
+        opt_arg="`echo "${2}" | sed -e 's/^-.*//'`"
+        ;;
+      *)
+        opt_opt= 
+        opt_arg=
+        ;;
+    esac
+
+
+    case "${opt_opt}" in
+      -c)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_CASEID="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -dat)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_DATDIR="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -date1)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_SIMBEG="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -date2)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_SIMEND="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -host)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_HOSTFILE="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -i)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_INP="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -ini)
+          my_INIT=1
+          [ "X${opt_arg}" != "X" ] && my_INIT="${opt_arg}"
+          opt_flg=$(( ${opt_flg} + 1 ))
+        ;;
+      -m)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_MODFILES="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -n)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_CPUS="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -h|-help)
+          usage
+          opt_flg=$(( ${opt_flg} + 1 ))
+        ;;
+    esac
+    shift
+  done
+
+  [ ${opt_flg} -le 0 ] && usage
+
+  # Next assign the values using the my_* variables (if they are set).
+  # Mandatory arguments/parameters
+  if [ -z "${my_INP}" ]; then
+    procError "the model configuration file is the only parameter" \
+              "that can only be specified from the command line." \
+              "usage: ${nm_func} -i <filename>"
+  fi
+
+  CASEID="${my_CASEID}"
+  SimBeg="${my_SIMBEG:-${SimBeg}}"
+  SimEnd="${my_SIMEND:-${SimEnd}}"
+  DATA_DIR="${my_DATDIR:-${DATA_DIR}}"
+  MODEL_INP="${my_INP}"
+  FORCE_INI=$(String_getInteger "${my_INIT:-0}" 0)
+  MODFILES="${my_MODFILES}"
+
+  UserCPUS=$(String_getInteger "${my_CPUS:-0}" 0)
+  HOSTFILE="${my_HOSTFILE}"
+
+  return 0
+}
+
+# -------------------------------------------------------
+# ParseArgsMsub()
+# Gets the supplied options to the script.
+# -------------------------------------------------------
+ParseArgsMsub()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local my_CASEID my_DATDIR my_MODFILES my_INP
+  local my_HOST my_HOSTFILE
+  local my_SIMBEG my_SIMEND my_CPUS my_INIT
+
+  my_CASEID="${ms_id}"
+  my_DATDIR="${ms_dat}"
+  my_SIMBEG="${ms_beg}"
+  my_SIMEND="${ms_end}"
+  my_INP="${ms_inp}"
+  my_INIT=$(String_getInteger "${ms_init:-0}" 0)
+  my_MODFILES="${ms_mods}"
+  my_HOST=$(String_getInteger "${ms_host:-0}" 0)
+
+  # Next assign the values using the my_* variables (if they are set).
+  # Mandatory arguments/parameters
+  if [ -z "${my_INP}" ]; then
+    procError "the model configuration file is the only parameter" \
+              "that can only be specified from the command line." \
+              "usage: ${nm_func} -v ms_inp=<filename>"
+  fi
+
+  CASEID="${my_CASEID}"
+  SimBeg="${my_SIMBEG:-${SimBeg}}"
+  SimEnd="${my_SIMEND:-${SimEnd}}"
+  DATA_DIR="${my_DATDIR:-${DATA_DIR}}"
+  MODEL_INP="${my_INP}"
+  FORCE_INI="${my_INIT:-0}"
+  MODFILES="${my_MODFILES}"
+
+  # MSUB/PBS environment variables
+  # PBS_O_HOST      -> The name of the host upon which the qsub command is running
+  # PBS_SERVER      -> The hostname of the pbs_server which qsub submits the job to
+  # PBS_O_QUEUE     -> The name of the original queue to which the job was submitted
+  # PBS_O_WORKDIR   -> The absolute path of the current working directory
+  #                    of the qsub command
+  # PBS_ARRAYID     -> Each member of a job array is assigned a unique identifier
+  # PBS_ENVIRONMENT -> Set to PBS_BATCH to indicate the job is a batch job, or to
+  #                    PBS_INTERACTIVE to indicate the job is a PBS interactive job,
+  #                    see -I option.
+  # PBS_JOBID       -> The job identifier assigned to the job by the batch system
+  # PBS_JOBNAME     -> The job name supplied by the user
+  # PBS_NODEFILE    -> The name of the file contain the list of nodes assigned to
+  #                    the job (for parallel and cluster systems)
+  # PBS_QUEUE       -> The name of the queue from which the job is executed
+  # PBS_O_HOME      -> The value of the HOME variable in the environment
+  # PBS_O_LANG      -> The value of the LANG variable in the environment
+  # PBS_O_LOGNAME   -> The value of the LOGNAME variable in the environment
+  # PBS_O_PATH      -> The value of PATH from submission environment
+  # PBS_O_MAIL      -> The value of the MAIL variable in the environment
+  # PBS_O_SHELL     -> The value of the SHELL variable in the environment
+  # PBS_O_TZ        -> The value of the TZ variable in the environment
+  # PBS_O_NODENUM   -> The node offset number
+  # PBS_O_VNODENUM  -> The vnode offset number
+  # PBS_VERSION     -> The version Number of Torque eg TORQUE-2.5.1
+  # PBS_MOMPORT     -> The active port for mom daemon
+  # PBS_TASKNUM     -> The number of tasks requested
+  # PBS_JOBCOOKIE   -> The job cookie
+  # PBS_SERVER      -> The server Running Torque
+  # PBS_JOBDIR      -> Pathname of job-specific staging and execution directory
+  # TMPDIR          -> The job-specific temporary directory for this job.
+
+  # Determine the cpus/cores requested from the musb script,
+  # we need to compare this value with the number of cpus
+  # requested by the models themselves
+  if [ -n ${PBS_NODEFILE:+1} ]; then
+    UserCPUS=$(cat ${PBS_NODEFILE} | wc -l)
+  fi
+
+  # If my_HOST is set to a value greater than 0, try
+  # to determine the hosts the msub job will run on
+  # and subsequently create a machinefile or list of hosts
+  if [ ${my_HOST} -gt 0 ]; then
+    [ -n ${PBS_NODEFILE:+1} ] && HOSTFILE="${PBS_NODEFILE}"
+  fi
+
+  return 0
+}
+
+usage()
+{
+  echo
+  echo "Usage: \"${0}\" [option1 [option_value1]] [option2 [option_value2]] ..."
+  echo
+
+  echo "               AVAILABLE OPTIONS"
+  echo " In addition to passing the configuration parameters/variables using"
+  echo "   the available options of this script, some of these configuration"
+  echo "   parameters/variables can also be obtained from the environment."
+  echo " Additional parameters are set in the script (see first lines of the script)."
+  echo " For a further explanation of all these variables, see the script source code."
+  echo
+
+  echo -n "-help|-h   "; echo -n "Show this help screen."; echo
+  echo -n "-c         "; echo -n "Set a name/id for the case being run."; echo
+  echo    "             MANDATORY: no"
+  echo    "             DEFAULT: not set"
+  echo -n "-dat       "; echo -n "The root directory where all necessary data are stored."; echo
+  echo    "             MANDATORY: yes"
+  echo    "             DEFAULT  : not set"
+  echo -n "-date1     "; echo -n "The starting date for the simulation being run."; echo
+  echo    "             FORMAT : YYYY/MM/DD [HH:MN:SC] or YYYY-MM-DD [HH:MN:SC]."
+  echo    "             MANDATORY: yes"
+  echo    "             DEFAULT  : not set"
+  echo -n "-date2     "; echo -n "The ending date for the simulation being run."; echo
+  echo    "             FORMAT : YYYY/MM/DD [HH:MN:SC] or YYYY-MM-DD [HH:MN:SC]."
+  echo    "             MANDATORY: yes"
+  echo    "             DEFAULT  : not set"
+  echo -n "-host      "; echo -n "The hostfile to be used (if any) for an mpirun."; echo
+  echo    "             MANDATORY: no"
+  echo    "             DEFAULT  : not set"
+  echo -n "-i         "; echo -n "The main input/configuration file of the modeling system."; echo
+  echo    "             MANDATORY: yes"
+  echo    "             DEFAULT  : not set"
+  echo -n "-ini       "; echo -n "Set the initialization flag (to initialize the model use -ini >=1)."; echo
+  echo    "             MANDATORY: no"
+  echo    "             DEFAULT  : 0 (work from restart files)"
+  echo -n "-m         "; echo -n "The names of the modules to load and use at runtime."; echo
+  echo    "             The required modules are already set by the build script during compilation."
+  echo    "             It is given the option to supply these modules from the command line as well,"
+  echo    "             in case the names of the modules are different or, something went wrong."
+  echo    "             MANDATORY: no"
+  echo    "             DEFAULT  : not set"
+  echo -n "-n         "; echo -n "Set the number of CPUS to be used."; echo
+  echo    "             If it not set, the script itself will try to determine the number of cpus."
+  echo    "             MANDATORY: no"
+  echo    "             DEFAULT  : 0 (not set)"
+
+  exit 0
+}
+
+checkCPLFILE()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local inp_file inp_tmpl my_swanINP
+  local atm_nodes ocn_nodes wav_nodes
+  local atm_file ocn_file wav_file
+  local my_USE_CPL
+
+  local xpr1 xpr2
+
+  # The environment variables USE_* should be already set before calling this function.
+  my_USE_CPL="`getYesNo "${COUPLED_SYSTEM:-no}"`"
+
+  if [ "${my_USE_CPL}" = "no" ]; then
+   unset cplINP
+   export cplNODES=0
+   export cplFLG=0
+   return 0
+  fi
+
+  inp_file="`echo "${1:-UNDEF}" | sed -e 's/[[:space:]]//g'`"
+  inp_tmpl="${inp_file}-tmpl"
+
+  if ! `checkFILE -r "${inp_tmpl}"`; then
+    procError "could not find the COUPLE input file:" \
+              "file = ${inp_tmpl}"
+  fi
+
+  # ----- is this a COUPLE input file?
+  if [ "X`grep -Ei "^[[:space:]]*NnodesATM[[:space:]]*=" ${inp_tmpl} 2>/dev/null | sed -e 's/\!.*//g' `" != "X" ] || \
+     [ "X`grep -Ei "^[[:space:]]*NnodesWAV[[:space:]]*=" ${inp_tmpl} 2>/dev/null | sed -e 's/\!.*//g' `" != "X" ] || \
+     [ "X`grep -Ei "^[[:space:]]*NnodesOCN[[:space:]]*=" ${inp_tmpl} 2>/dev/null | sed -e 's/\!.*//g' `" != "X" ] || \
+     [ "X`grep -Ei "^[[:space:]]*ATM_name[[:space:]]*="  ${inp_tmpl} 2>/dev/null | sed -e 's/\!.*//g' `" != "X" ] || \
+     [ "X`grep -Ei "^[[:space:]]*WAV_name[[:space:]]*="  ${inp_tmpl} 2>/dev/null | sed -e 's/\!.*//g' `" != "X" ] || \
+     [ "X`grep -Ei "^[[:space:]]*OCN_name[[:space:]]*="  ${inp_tmpl} 2>/dev/null | sed -e 's/\!.*//g' `" != "X" ]; then
+    [ -f ${inp_file} ] && rm -f ${inp_file}
+    cp -f ${inp_tmpl} ${inp_file}
+    export cplINP=${inp_file}
+    export cplNODES=0
+    export cplFLG=1
+  else
+    unset cplINP
+    export cplNODES=0
+    export cplFLG=0
+    return 1
+  fi
+
+  # ATM_name
+  Get_BlockText ${inp_file} ATM_name
+  atm_file="$(echo "${bl_text}" | sed -e 's/\!.*//g' | sed -e 's/.*=//g')"
+  atm_file=( $(echo $(echo "${atm_file}" | sed -e 's/[=;,\{\}\\]/ /g')) )
+  atm_file="${atm_file[0]}"
+  unset bl_first bl_text bl_first_nline bl_nlines
+  # OCN_name
+  Get_BlockText ${inp_file} OCN_name
+  ocn_file="$(echo "${bl_text}" | sed -e 's/\!.*//g' | sed -e 's/.*=//g')"
+  ocn_file=( $(echo $(echo "${ocn_file}" | sed -e 's/[=;,\{\}\\]/ /g')) )
+  ocn_file="${ocn_file[0]}"
+  unset bl_first bl_text bl_first_nline bl_nlines
+  # WAV_name
+  Get_BlockText ${inp_file} WAV_name
+  wav_file="$(echo "${bl_text}" | sed -e 's/\!.*//g' | sed -e 's/.*=//g')"
+  wav_file=( $(echo $(echo "${wav_file}" | sed -e 's/[=;,\{\}\\]/ /g')) )
+  wav_file="${wav_file[@]}"
+  unset bl_first bl_text bl_first_nline bl_nlines
+
+  checkWRFFILE ${atm_file}
+  if [ ${wrfFLG} -gt 0 ]; then
+    xpr1="^[[:space:]]*NnodesATM[[:space:]]*=[[:space:]]*"
+    xpr2="${wrfNODES}"
+    sed -i "s/\(${xpr1}\)\(.*\)/\1${xpr2}/gi" ${inp_file}
+
+    cplNODES=$(( ${cplNODES} + ${wrfNODES} ))
+  fi
+
+  checkROMSFILE ${ocn_file}
+  if [ ${romsFLG} -gt 0 ]; then
+    xpr1="^[[:space:]]*NnodesOCN[[:space:]]*=[[:space:]]*"
+    xpr2="${romsNODES}"
+    sed -i "s/\(${xpr1}\)\(.*\)/\1${xpr2}/gi" ${inp_file}
+
+    cplNODES=$(( ${cplNODES} + ${romsNODES} ))
+  fi
+
+  checkSWANFILE "${wav_file}"
+  if [ ${swanFLG} -gt 0 ]; then
+    xpr1="^[[:space:]]*NnodesWAV[[:space:]]*=[[:space:]]*"
+    xpr2="${swanNODES}"
+    sed -i "s/\(${xpr1}\)\(.*\)/\1${xpr2}/gi" ${inp_file}
+
+    cplNODES=$(( ${cplNODES} + ${swanNODES} ))
+
+    # exit if the number of input files is less than swanDOMS
+    my_swanINP=( swanINP )
+    if [ ${#my_swanINP[@]} -lt ${swanDOMS} ]; then
+      procError "nsufficient number of SWAN input files found in file:" \
+                " COUPLE input file = ${inp_file:-UNDEF}" \
+                "SWAN input file(s) = ${swanINP:-UNDEF}" \
+                "          swanDOMS = ${swanDOMS:-UNDEF}" \
+                "number of files should be greater or equal the SWAN domains"
+    fi
+  fi
+
+  [ ${cplNODES} -le 0 ] && cplNODES=0
+  ModelCPUS=${cplNODES}
+  export ModelCPUS cplNODES
+}
+
+checkWRFFILE()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local -i intval
+  local inp_file inp_tmpl nproc_x nproc_y
+  local my_wrfDOMS my_wrfDT my_NPROC_X my_NPROC_Y
+  local my_USE_WRF my_wrfDOMS
+  
+  ########## Global variables
+  export wrfNODES=1
+  export wrfFLG=0
+  unset wrfINP
+
+  # The environment variables USE_* should be already set before calling this function.
+  my_USE_WRF="`getYesNo "${USE_WRF:-no}"`"
+
+  if [ "${my_USE_WRF}" = "no" ]; then
+   unset wrfINP
+   unset wrfDOMS
+   unset wrfDT
+   export wrfNODES=1
+   export wrfFLG=0
+   return 0
+  fi
+
+  inp_file="`echo "${1:-UNDEF}" | sed -e 's/[[:space:]]//g'`"
+  inp_tmpl="${inp_file}-tmpl"
+
+  if ! `checkFILE -r "${inp_tmpl}"`; then
+    procError "could not find the the WRF input file:" \
+              "file = ${inp_tmpl}"
+  fi
+
+  # ----- is this a WRF input file?
+  if [ "X`grep -Ei "^[[:space:]]*\&time_control" ${inp_tmpl} 2>/dev/null | sed -e 's/\!.*//g'`" != "X" ] && \
+     [ "X`grep -Ei "^[[:space:]]*\&domains"      ${inp_tmpl} 2>/dev/null | sed -e 's/\!.*//g'`" != "X" ] && \
+     [ "X`grep -Ei "^[[:space:]]*\&physics"      ${inp_tmpl} 2>/dev/null | sed -e 's/\!.*//g'`" != "X" ] && \
+     [ "X`grep -Ei "^[[:space:]]*\&dynamics"     ${inp_tmpl} 2>/dev/null | sed -e 's/\!.*//g'`" != "X" ]; then
+    [ -f ${inp_file} ] && rm -f ${inp_file}
+    cp -f ${inp_tmpl} ${inp_file}
+    export wrfFLG=1
+    export wrfINP=${inp_file}
+  else
+    unset wrfINP
+    unset wrfDOMS
+    unset wrfDT
+    export wrfNODES=1
+    export wrfFLG=0
+    return 1
+  fi
+
+
+  # -----
+  # Check if the user requested a number domains to be used
+  # and replace their values into the input file.
+  if [ -n "${wrfDOMS:+1}" ]; then
+    my_wrfDOMS="$(echo "${wrfDOMS}" | sed -e 's/[=;:,_\{\}\\]/ /g' | awk '{print $1}')"
+    my_wrfDOMS=$( getPosInteger "${my_wrfDOMS}" )
+    ModifyNameListVar ${wrfINP} max_dom "${my_wrfDOMS:-1}"
+  fi
+
+  # Finally get the number of nests/domains being used from
+  # the input file and export the number of domains (for the case that wrfDOMS is not defined).
+  my_wrfDOMS="$( echo "`getNameListVar ${wrfINP} max_dom`" | awk '{print $3}' )"
+  my_wrfDOMS=$( getPosInteger "${my_wrfDOMS}" )
+  if [ ${my_wrfDOMS:-0} -le 0 ]; then
+    procError "invalid number of domains found in file:" \
+              "   file = ${wrfINP:-UNDEF}" \
+              "wrfDOMS = ${my_wrfDOMS:-UNDEF}"
+  fi
+  export wrfDOMS=${my_wrfDOMS}
+  # -----
+
+
+  # -----
+  # Check if the user requested a time step to be used
+  # and replace its value into the input file.
+  if [ -n "${wrfDT:+1}" ]; then
+    my_wrfDT="$(echo "${wrfDT}" | sed -e 's/[=;:,_\{\}\\]/ /g' | awk '{print $1}')"
+    my_wrfDT=$( getPosInteger "${my_wrfDT}" )
+    if [ ${my_wrfDT} -gt 0 ]; then
+      ModifyNameListVar ${wrfINP} time_step "${my_wrfDT}"
+    else
+      procError "invalid time step supplied by the user:" \
+                "wrfDT = ${wrfDT:-UNDEF}"
+    fi
+  fi
+
+  # Finally get the value of the time step being used from
+  # the input file and export the time step value.
+  my_wrfDT="$( echo "`getNameListVar ${wrfINP} time_step`" | awk '{print $3}' )"
+  my_wrfDT=$( getPosInteger "${my_wrfDT}" )
+  if [ ${my_wrfDT:-0} -le 0 ]; then
+    procError "invalid value for wrfDT found in file:" \
+              " file = ${wrfINP:-UNDEF}" \
+              "wrfDT = ${my_wrfDT:-UNDEF}"
+  fi
+  export wrfDT=${my_wrfDT}
+  # -----
+
+  # -----
+  # Check if the user requested to use ocean SST's
+  # and modify the input file accordingly.
+  intval=$(String_getInteger "${OcnSST}" -1)
+  if [ ${intval} -ge 0 ]; then
+    [ ${intval} -ge 1 ] && intval=1
+    ModifyNameListVar ${wrfINP} sst_update "${intval}"
+  fi
+  # ----- 
+
+  # -----
+  # Check if the user requested a number of x/y tiles(cpus) to be used
+  # and replace their values into the input file.
+  if [ -n "${wrfNPROC_X:+1}" ]; then
+    nproc_x=( $(echo "${wrfNPROC_X}" | sed -e 's/[=;:,_\{\}\\]/ /g') )
+    intval=$(String_getInteger "${nproc_x[0]}" 0)
+    if [ ${intval} -ge -1 ] && [ ${intval} -ne 0 ]; then
+      my_NPROC_X=${intval}
+    fi
+  fi
+
+  if [ -n "${wrfNPROC_Y:+1}" ]; then
+    nproc_y=( $(echo "${wrfNPROC_Y}" | sed -e 's/[=;:,_\{\}\\]/ /g') )
+    intval=$(String_getInteger "${nproc_y[0]}" 0)
+    if [ ${intval} -gt -1 ] && [ ${intval} -ne 0 ]; then
+      my_NPROC_Y=${intval}
+    fi
+  fi
+
+  if [ -n "${my_NPROC_X:+1}" -a -n "${my_NPROC_Y:+1}" ]; then
+    ModifyNameListVar ${wrfINP} nproc_x "${my_NPROC_X}"
+    ModifyNameListVar ${wrfINP} nproc_y "${my_NPROC_Y}"
+  fi
+
+  # Finally get the number of the x/y tiles(cpus) being used from
+  # the input file and export the number of tiles(cpus).
+  nproc_x="$( echo "`getNameListVar ${wrfINP} nproc_x`" | awk '{print $3}' )"
+  nproc_x=$(String_getInteger "${nproc_x}" 0)
+  if [ ${nproc_x} -lt -1 ] || [ ${nproc_x} -eq 0 ]; then
+    procError "invalid value for nproc_x in file:" \
+              "   file = ${wrfINP:-UNDEF}" \
+              "nproc_x = ${nproc_x:-UNDEF}"
+  fi
+
+  nproc_y="$( echo "`getNameListVar ${wrfINP} nproc_y`" | awk '{print $3}' )"
+  nproc_y=$(String_getInteger "${nproc_y}" 0)
+  if [ ${nproc_y} -lt -1 ] || [ ${nproc_y} -eq 0 ]; then
+    procError "invalid value for nproc_y in file:" \
+              "   file = ${wrfINP:-UNDEF}" \
+              "nproc_y = ${nproc_y:-UNDEF}"
+  fi
+
+  if [ ${nproc_x} -eq -1 ] || [ ${nproc_y} -eq -1 ]; then
+    if [ ${nproc_x} -ne ${nproc_y} ]; then
+      procError "invalid values for nproc_x, nproc_y in file:" \
+                "   file = ${wrfINP:-UNDEF}" \
+                "nproc_x = ${nproc_x:-UNDEF}" \
+                "nproc_y = ${nproc_y:-UNDEF}"
+    fi
+  fi
+  
+  wrfNODES=$(( ${nproc_x} * ${nproc_y} ))
+  ModelCPUS=${wrfNODES}
+  export ModelCPUS wrfNODES
+  # -----
+}
+
+checkROMSFILE()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local -i i n1 n2 idx intval count
+  local inp_file inp_tmpl nproc_x nproc_y
+
+  local my_TITLE my_DSTART
+  local my_USE_ROMS my_romsDOMS
+  local my_NPROC_X my_NPROC_Y
+
+  local my_refJUL my_refTIME my_simJUL
+
+  local xpr1 xpr2
+
+  if [ -z "${SimBeg}" ]; then
+    procError "the start date for the simulation needs to be defined" \
+              "Start Date: SimBeg = ${SimBeg:-UNDEF}"
+  fi
+
+  ########## Global variables
+  export romsNODES=1
+  export romsFLG=0
+  unset romsINP
+
+  # The environment variables USE_* should be already set before calling this function.
+  my_USE_ROMS="`getYesNo "${USE_ROMS:-no}"`"
+
+  if [ "${my_USE_ROMS}" = "no" ]; then
+   unset romsINP
+   export romsDOMS=0
+   export romsNODES=1
+   export romsFLG=0
+   return 0
+  fi
+
+  inp_file="`echo "${1:-UNDEF}" | sed -e 's/[[:space:]]//g'`"
+  inp_tmpl="${inp_file}-tmpl"
+
+  if ! `checkFILE -r "${inp_tmpl}"`; then
+    procError "could not find the ROMS input file:" \
+              "file = ${inp_tmpl}"
+  fi
+
+  # ----- is this a ROMS input file?
+  if [ "X`grep -Ei "^[[:space:]]*NtileI[[:space:]]*=" ${inp_tmpl} 2>/dev/null | sed -e 's/\!.*//g' `" != "X" ] && \
+     [ "X`grep -Ei "^[[:space:]]*NtileJ[[:space:]]*=" ${inp_tmpl} 2>/dev/null | sed -e 's/\!.*//g' `" != "X" ] && \
+     [ "X`grep -Ei "^[[:space:]]*NTIMES[[:space:]]*=" ${inp_tmpl} 2>/dev/null | sed -e 's/\!.*//g' `" != "X" ]; then
+    [ -f ${inp_file} ] && rm -f ${inp_file}
+    cp -f ${inp_tmpl} ${inp_file}
+    export romsFLG=1
+    export romsINP=${inp_file}
+  else
+    unset romsINP
+    export romsDOMS=0
+    export romsNODES=1
+    export romsFLG=0
+    return 1
+  fi
+
+
+  # -----
+  my_TITLE=${SimTitle:-"GoM 1\/12 degree"}
+
+
+  # Reference date to be used below.
+  getInpTimeStamp "${ref_date:-1900/12/31 00:00:00}"
+    my_refJUL=${myJUL}
+      my_refTIME="scale=8; ( ${myHR} * 3600.0 + ${myMN} * 60.0 ) / 86400.0"
+    my_refTIME="$(echo "${my_refTIME}" | bc -ql 2>/dev/null)"
+      my_refTIME="scale=8; ${myYRStr}${myMOStr}${myDAStr} + ${my_refTIME}"
+    my_refTIME="$(echo "${my_refTIME}" | bc -ql 2>/dev/null)"
+    my_refTIME="$(echo "${my_refTIME}" | awk '{ printf "%.*f\n", 2, $0 }')d0"
+  unset myYR myMO myDA myHR myMN mySC myJUL
+  unset myYRStr myMOStr myDAStr myHRStr myMNStr mySCStr myDATE
+
+  # Days from reference date to start of simulation
+  getInpTimeStamp "${SimBeg}"
+    my_simJUL=${myJUL}
+      my_DSTART="scale=8; ( ${my_simJUL} - ${my_refJUL} ) / 86400.0"
+    my_DSTART="$(echo "${my_DSTART}" | bc -ql 2>/dev/null)"
+    my_DSTART="$(echo "${my_DSTART}" | awk '{ printf "%.*f\n", 2, $0 }')d0"
+  unset myYR myMO myDA myHR myMN mySC myJUL
+  unset myYRStr myMOStr myDAStr myHRStr myMNStr mySCStr myDATE
+
+  # Modify/update these fields in the ROMS input file
+  # TITLE
+    sed -i "s/\(^[[:space:]]*\)TITLE[[:space:]]*=.*/\1TITLE = ${my_TITLE}/g" ${romsINP}
+  # LcycleRST
+    xpr1="`Make_BlockText ${romsINP} "LcycleRST" "F" 4 2`"
+    Put_BlockText ${romsINP} "LcycleRST" "${xpr1}"
+  # DSTART
+    xpr1="`Make_BlockText ${romsINP} "DSTART" "${my_DSTART}" 4 1`"
+    Put_BlockText ${romsINP} "DSTART" "${xpr1}"
+  # TIME_REF
+    xpr1="`Make_BlockText ${romsINP} "TIME_REF" "${my_refTIME}" 4 1`"
+    Put_BlockText ${romsINP} "TIME_REF" "${xpr1}"
+  # -----
+
+
+  # -----
+  # Check if the user requested a number domains to be used,
+  # default = 1.
+  my_romsDOMS=1
+  if [ -n "${romsDOMS:+1}" ]; then
+    my_romsDOMS="$(echo "${romsDOMS}" | sed -e 's/[=;:,_\{\}\\]/ /g' | awk '{print $1}')"
+    my_romsDOMS=$( getPosInteger "${my_romsDOMS}" )
+    my_romsDOMS=${my_romsDOMS:-1}
+  fi
+  export romsDOMS=${my_romsDOMS}
+  # -----
+
+
+  # -----
+  # Check if the user requested a number of x/y tiles(cpus) to be used
+  # and replace their values into the input file.
+  if [ -n "${romsNPROC_X:+1}" ]; then
+    nproc_x=( $(echo "${romsNPROC_X}" | sed -e 's/[=;:,_\{\}\\]/ /g') )
+    count=0
+    n1=0
+    n2=${#nproc_x[@]}
+    for ((i = ${n1}; i < ${n2}; i++))
+    do
+      intval=$(String_getInteger "${nproc_x[${i}]}" 0)
+      if [ ${intval} -gt 0 ]; then
+        my_NPROC_X[${count}]=${intval}
+        count=$(( ${count} + 1))
+      fi
+    done
+
+    if [ -z "${my_NPROC_X}" ]; then
+      procError "user supplied invalid values for romsNPROC_X" \
+                "romsNPROC_X = ${romsNPROC_X:-UNDEF}"
+    else
+      if [ ${#my_NPROC_X[@]} -lt ${romsDOMS} ]; then
+        n1=${#my_NPROC_X[@]}
+        n2=${romsDOMS}
+        idx=$(( ${n1} - 1))
+        for ((i = ${n1}; i < ${n2}; i++))
+        do
+          my_NPROC_X[${i}]=${my_NPROC_X[${idx}]}
+        done
+      fi
+      my_NPROC_X="${my_NPROC_X[@]}"
+    fi
+  fi
+
+  if [ -n "${romsNPROC_Y:+1}" ]; then
+    nproc_y=( $(echo "${romsNPROC_Y}" | sed -e 's/[=;:,_\{\}\\]/ /g') )
+    count=0
+    n1=0
+    n2=${#nproc_y[@]}
+    for ((i = ${n1}; i < ${n2}; i++))
+    do
+      intval=$(String_getInteger "${nproc_y[${i}]}" 0)
+      if [ ${intval} -gt 0 ]; then
+        my_NPROC_Y[${count}]=${intval}
+        count=$(( ${count} + 1))
+      fi
+    done
+
+    if [ -z "${my_NPROC_Y}" ]; then
+      procError "user supplied invalid values for romsNPROC_Y" \
+                "romsNPROC_Y = ${romsNPROC_Y:-UNDEF}"
+    else
+      if [ ${#my_NPROC_Y[@]} -lt ${romsDOMS} ]; then
+        n1=${#my_NPROC_Y[@]}
+        n2=${romsDOMS}
+        idx=$(( ${n1} - 1))
+        for ((i = ${n1}; i < ${n2}; i++))
+        do
+          my_NPROC_Y[${i}]=${my_NPROC_Y[${idx}]}
+        done
+      fi
+      my_NPROC_Y="${my_NPROC_Y[@]}"
+    fi
+  fi
+
+  if [ -n "${my_NPROC_X:+1}" -a -n "${my_NPROC_Y:+1}" ]; then
+    if [ ${#my_NPROC_X[@]} -eq ${#my_NPROC_Y[@]} ]; then
+      xpr1="`Make_BlockText ${romsINP} "NtileI" "${my_NPROC_X}" 4 2`"
+      Put_BlockText ${romsINP} "NtileI" "${xpr1}"
+      xpr1="`Make_BlockText ${romsINP} "NtileJ" "${my_NPROC_Y}" 4 2`"
+      Put_BlockText ${romsINP} "NtileJ" "${xpr1}"
+    fi
+  fi
+
+  # Finally get the number of the x/y tiles(cpus) being used from
+  # the input file and export the number of tiles(cpus).
+  Get_BlockText ${romsINP} NtileI
+  nproc_x="$(echo "${bl_text}" | sed -e 's/\!.*//g' | sed -e 's/.*=//g')"
+  nproc_x=( $(echo $(echo "${nproc_x}" | sed -e 's/[=;:,_\{\}\\]/ /g')) )
+  unset bl_first bl_text bl_first_nline bl_nlines
+  if [ -z "${nproc_x}" ]; then
+    procError "wrong values for NtileI found in the file:" \
+              "  file = ${romsINP}" \
+              "NtileI = ${nproc_x:-UNDEF}"
+  else
+    if [ ${#nproc_x[@]} -lt ${romsDOMS} ]; then
+      n1=${#nproc_x[@]}
+      n2=${romsDOMS}
+      idx=$(( ${n1} - 1))
+      for ((i = ${n1}; i < ${n2}; i++))
+      do
+        nproc_x[${i}]=${nproc_x[${idx}]}
+      done
+    fi
+  fi
+
+  Get_BlockText ${romsINP} NtileJ
+  nproc_y=$(echo "${bl_text}" | sed -e 's/\!.*//g' | sed -e 's/.*=//g')
+  nproc_y=( $(echo $(echo ${nproc_y} | sed -e 's/[=;:,_\{\}\\]/ /g')) )
+  unset bl_first bl_text bl_first_nline bl_nlines
+  if [ -z "${nproc_y}" ]; then
+    procError "wrong values for NtileJ found in the file:" \
+              "  file = ${romsINP}" \
+              "NtileJ = ${nproc_y:-UNDEF}"
+  else
+    if [ ${#nproc_y[@]} -lt ${romsDOMS} ]; then
+      n1=${#nproc_y[@]}
+      n2=${romsDOMS}
+      idx=$(( ${n1} - 1))
+      for ((i = ${n1}; i < ${n2}; i++))
+      do
+        nproc_y[${i}]=${nproc_y[${idx}]}
+      done
+    fi
+  fi
+
+  romsNODES=0
+  n1=0
+  n2=${#nproc_x[@]}
+  [ ${n2} -ge ${romsDOMS} ] && n2=${romsDOMS}
+  for ((i = ${n1}; i < ${n2}; i++))
+  do
+    romsNODES=$(( ${romsNODES} + ${nproc_x[${i}]} * ${nproc_y[${i}]} ))
+  done
+  [ ${romsNODES} -le 0 ] && romsNODES=1
+  export romsNODES
+  # -----
+
+  ModelCPUS=${romsNODES}
+  export ModelCPUS
+}
+
+checkSWANFILE()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local -i intval found_NOSWAN
+  local ifl in_file nproc
+
+  local my_TITLE
+  local my_USE_CPL my_USE_SWAN my_swanDOMS
+
+  local xpr1 xpr2
+
+  ########## Global variables
+  export swanNODES=1
+  export swanFLG=0
+  unset swanINP
+
+  # The environment variables USE_* should be already set before calling this function.
+  my_USE_CPL="`getYesNo "${COUPLED_SYSTEM:-no}"`"
+  my_USE_SWAN="`getYesNo "${USE_SWAN:-no}"`"
+
+  if [ "${my_USE_SWAN}" = "no" ]; then
+   unset swanINP
+   export swanDOMS=0
+   export swanNODES=1
+   export swanFLG=0
+   return 0
+  fi
+
+  in_file=( ${1} )
+  in_file="${in_file[@]}"
+
+  found_NOSWAN=0
+  for ifl in ${in_file}
+  do
+    if ! `checkFILE -r "${ifl}"`; then
+      procError "couldn't locate the SWAN input file:" \
+                "file = ${ifl:-UNDEF}"
+    fi
+
+    # ----- is this a SWAN input file?
+    if [ "X`grep -Ei "^[[:space:]]*Mode.*Stationary"  ${ifl} 2>/dev/null | sed -e 's/\!.*//g' `" != "X" ] || \
+       [ "X`grep -Ei "^[[:space:]]*Mode.*Dynamic"     ${ifl} 2>/dev/null | sed -e 's/\!.*//g' `" != "X" ] || \
+       [ "X`grep -Ei "^[[:space:]]*Mode.*Dimensional" ${ifl} 2>/dev/null | sed -e 's/\!.*//g' `" != "X" ] && \
+       [ "X`grep -Ei "^[[:space:]]*Block.*"           ${ifl} 2>/dev/null | sed -e 's/\!.*//g' `" != "X" ]; then
+      swanINP=( ${swanINP} ${ifl} )
+    else
+      found_NOSWAN=1
+    fi
+    [ ${found_NOSWAN} -gt 0 ] && break
+
+    #  make a backup copy of wrfINP
+    checkFILE -r "${ifl}.bak"
+    [ $? -eq 0 ] && rm -f "${ifl}.bak"
+    cp "${ifl}" "${ifl}.bak"
+  done
+
+  # exit if any of the input files is not a SWAN file
+  if [ ${found_NOSWAN} -gt 0 ]; then
+   unset swanINP
+   export swanDOMS=0
+   export swanNODES=1
+   export swanFLG=0
+   return 1
+  else
+    export swanFLG=1
+    export swanINP="${my_swanINP[@]}"
+  fi
+
+
+  # -----
+  # Check if the user requested a number domains to be used,
+  # default = 1.
+  my_swanDOMS=1
+  if [ -n "${swanDOMS:+1}" ]; then
+    my_swanDOMS="$(echo "${swanDOMS}" | sed -e 's/[=;:,_\{\}\\]/ /g' | awk '{print $1}')"
+    my_swanDOMS=$(String_getInteger "${my_swanDOMS:-1}" 1)
+    [ ${my_swanDOMS} -le 0 ] && my_swanDOMS=1
+  fi
+  export swanDOMS=${my_swanDOMS}
+  # -----
+
+
+  # -----
+  # Check if the user requested a number of tiles(cpus) to be used.
+  swanNODES=0
+
+  nproc="${UserCPUS:-${swanNPROC}}"
+  if [ -n "${nproc:+1}" ]; then
+    nproc=( $(echo "${nproc}" | sed -e 's/[=;:,_\{\}\\]/ /g') )
+    swanNODES=$(String_getInteger "${nproc[0]}" 1)
+  fi
+  [ ${swanNODES} -le 0 ] && swanNODES=1
+
+  export swanNODES
+  # -----
+
+
+  ModelCPUS=${swanNODES}
+  export ModelCPUS
+}
+
+Check_InputConfigs()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local -i myFLG
+  local my_USE_CPL my_USE_WRF my_USE_ROMS my_USE_SWAN
+
+  # The environment variables USE_* should be already set before calling this function.
+  my_USE_CPL="`getYesNo "${COUPLED_SYSTEM:-no}"`"
+  my_USE_WRF="`getYesNo "${USE_WRF:-no}"`"
+  my_USE_ROMS="`getYesNo "${USE_ROMS:-no}"`"
+  my_USE_SWAN="`getYesNo "${USE_SWAN:-no}"`"
+
+  if [ "${my_USE_WRF}"  = "no" ] && \
+     [ "${my_USE_ROMS}" = "no" ] && \
+     [ "${my_USE_SWAN}" = "no" ] && \
+     [ "${my_USE_CPL}"  = "no" ]; then
+    procError "need to define at least one of:" \
+              "  [COUPLED_SYSTEM, USE_WRF, USE_ROMS, USE_SWAN] to yes." \
+              "COUPLED_SYSTEM  = ${COUPLED_SYSTEM}" \
+              "       USE_WRF  = ${my_USE_WRF}" \
+              "       USE_ROMS = ${my_USE_ROMS}" \
+              "       USE_SWAN = ${my_USE_SWAN}"
+  fi
+
+  checkCPLFILE "${1}"
+  myFLG=${cplFLG}
+
+  if [ ${cplFLG} -le 0 ]; then
+    checkWRFFILE  "${1}"
+    checkROMSFILE "${1}"
+    checkSWANFILE "${1}"
+    myFLG=$(( ${wrfFLG} + ${romsFLG} + ${swanFLG} ))
+
+    if [ ${myFLG} -ne 1 ]; then
+      procError "only one model should be in use in no-coupled simulation:" \
+                "COUPLED_SYSTEM  = ${COUPLED_SYSTEM}" \
+                "       USE_WRF  = ${my_USE_WRF}" \
+                "       USE_ROMS = ${my_USE_ROMS}" \
+                "       USE_SWAN = ${my_USE_SWAN}"
+    fi
+  fi
+
+  if [ ${myFLG} -le 0 ]; then
+    echo "ERROR:: Check_InputConfigs: Found invalid configuration using the following inputs:"
+    echo "          cplINP  = ${cplINP:-UNDEF}"
+    echo "          wrfINP  = ${wrfINP:-UNDEF}"
+    echo "         romsINP  = ${romsINP:-UNDEF}"
+    echo "         swanINP  = ${swanINP:-UNDEF}"
+    echo "  COUPLED_SYSTEM  = ${my_USE_CPL}"
+    echo "         USE_WRF  = ${my_USE_WRF}"
+    echo "         USE_ROMS = ${my_USE_ROMS}"
+    echo "         USE_SWAN = ${my_USE_SWAN}"
+    echo "         wrfDOMS  = ${wrfDOMS:-UNDEF}"
+    echo "         romsDOMS = ${romsDOMS:-UNDEF}"
+    echo "         swanDOMS = ${swanDOMS:-UNDEF}"
+    echo "        wrfNODES  = ${wrfNODES:-UNDEF}"
+    echo "        romsNODES = ${romsNODES:-UNDEF}"
+    echo "        swanNODES = ${swanNODES:-UNDEF}"
+    echo "        Exiting now ..."
+    echo -n
+    exit 1
+  fi
+
+  return 0
+}
+
+Modify_ROMSConfig()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local -i ido nDOMS ntimes
+  local -i intv1 intv2
+  local -i ifl nfiles
+
+  local file1 file2 ifile idir
+  local rdays
+
+  local my_USE_ROMS my_USE_WRF my_USE_FRC my_USE_SWAN my_USE_SED
+
+  local my_data_dir
+  local my_beg_date my_end_date
+  local beg_date end_date beg_jul end_jul
+  local chk_date chk_jul chk_jul1 chk_jul2
+
+  local my_FPFX my_FSFX my_FEXPR my_DIRS
+  local fileGRD my_fileGRD fileGRDLNK my_fileGRDLNK
+  local fileINI my_fileINI fileINILNK my_fileINILNK
+  local fileBRY my_fileBRY fileBRYLNK my_fileBRYLNK
+  local fileCLI my_fileCLI fileCLILNK my_fileCLILNK
+
+  local my_NFFILES my_FRC_DIR
+  local fileFRC my_fileFRC fileFRCLNK my_fileFRCLNK
+
+  local fileOUT my_fileOUT fileOUTLNK my_fileOUTLNK
+
+  local my_Lm my_Mm my_N
+  local my_Vtransform my_Vstretching my_theta_s my_theta_b my_Tcline
+
+  local my_NTIMES my_NTIMESval
+  local my_domDT my_domNDTFAST my_domHFRM
+  local my_DT my_DTval my_NDTFAST my_NDTFASTval
+  local my_NDEFHIS my_NHIS my_HISval my_HFRMval
+  local my_NRST my_NRSTval my_NRREC my_NRRECval
+
+  local ixpr xpr1 xpr2 xpr3 xpr4 domstr
+
+  unset romsLINKFILES
+
+  # The environment variables USE_* should be already set before calling this function.
+  my_USE_ROMS="`getYesNo "${USE_ROMS:-no}"`"
+  my_USE_WRF="`getYesNo "${USE_WRF:-no}"`"
+  my_USE_FRC="`getYesNo "${USE_FRC:-no}"`"
+  my_USE_SWAN="`getYesNo "${USE_SWAN:-no}"`"
+  my_USE_SED="`getYesNo "${USE_SED:-no}"`"
+
+  [ "${my_USE_ROMS}" = "no" ] && return 0
+
+  if ! `checkFILE -r "${romsINP}"`; then
+    procError "couldn't locate the ROMS input file" \
+              "need to define USE_ROMS=yes" \
+              "and the ROMS input configuration file." \
+              "USE_ROMS = ${my_USE_ROMS}" \
+              "romsINP  = ${romsINP:-UNDEF}"
+  fi
+
+
+  # ---------- BEG:: Initialize local variables
+  nDOMS=$(String_getInteger "${romsDOMS:-1}" 1)
+  my_data_dir="${DATA_DIR:-.}"
+
+  if [ -n "${romsDT:+1}" ]; then
+    my_domDT=( ${romsDT} )
+    if [ ${nDOMS} -gt ${#my_domDT[@]} ]; then
+      procError "need to specify ${nDOMS} values for romsDT" \
+                "ROMS Domains = ${nDOMS}" \
+                "      romsDT = ${romsDT:-UNDEF}"
+    fi
+  fi
+
+  if [ -n "${romsNDTFAST:+1}" ]; then
+    my_domNDTFAST=( ${romsNDTFAST} )
+    if [ ${nDOMS} -gt ${#my_domNDTFAST[@]} ]; then
+      procError "need to specify ${nDOMS} values for romsNDTFAST" \
+                "ROMS Domains = ${nDOMS}" \
+                " romsNDTFAST = ${romsNDTFAST:-UNDEF}"
+    fi
+  fi
+
+  # number of time-steps between writing fields into history file
+  if [ -n "${romsHFRM:+1}" ]; then
+    my_domHFRM=( ${romsHFRM} )
+    if [ ${nDOMS} -gt ${#my_domHFRM[@]} ]; then
+      procError "need to specify ${nDOMS} values for romsHFRM" \
+                "ROMS Domains = ${nDOMS}" \
+                "    romsHFRM = ${romsHFRM:-UNDEF}"
+    fi
+  fi
+
+  my_beg_date="${firstYR}-${firstMO}-${firstDA} ${firstHR}:${firstMN}:${firstSC}"
+  my_end_date="${lastYR}-${lastMO}-${lastDA} ${lastHR}:${lastMN}:${lastSC}"
+
+  beg_date="$( getDate --date="${my_beg_date}" --fmt='+%F_%T' )"
+  if [ $? -ne 0 ]; then
+    procError "wrong \"start\" date for the simulation." \
+              "first DATE = ${my_beg_date}"
+  fi
+
+  end_date="$( getDate --date="${my_end_date}" --fmt='+%F_%T' )"
+  if [ $? -ne 0 ]; then
+    procError "wrong \"end\" date for the simulation." \
+              "last DATE = ${my_end_date}"
+  fi
+
+  beg_jul=$( getDate --date="${my_beg_date}" --fmt='+%s' )
+  end_jul=$( getDate --date="${my_end_date}" --fmt='+%s' )
+  if [ ${end_jul} -lt ${beg_jul} ]; then
+    procError "wrong \"end\" date for the simulation: SimEnd >= SimBeg." \
+              "first DATE = ${my_beg_date}" \
+              " last DATE = ${my_end_date}"
+  fi
+
+  # Determine the length (in days) of the current simulation
+  rdays="$(echo "scale=5; ( ${end_jul} - ${beg_jul} ) / 86400.0" | bc -ql 2>/dev/null)"
+  # ---------- END:: Initialize local variables
+
+
+  # ---------- BEG:: Bathymetry files
+  # We need to have bathymetry files for all ROMS domains
+  for ((ido = 0; ido < ${nDOMS}; ido++))
+  do
+    domstr="_d`get2DString $((ido + 1))`"
+    my_FEXPR=
+
+    # check for bathymetry files in "my_DIRS"
+    my_FPFX="romsgrd${domstr}"
+    my_FEXPR="${romsPFX}${my_FPFX}${romsSFX}(\.n.*)?"
+    my_DIRS="${my_data_dir} ${my_data_dir}/bath"
+    fileGRDLNK="ocn_grd${domstr}.nc"
+
+    ncdf_getModDataFile "${my_FEXPR}" "${my_DIRS}"
+
+    fileGRD="${foundFilePath}"
+    my_fileGRD="${my_fileGRD} ${fileGRD}"
+    my_fileGRDLNK="${my_fileGRDLNK} ${fileGRDLNK}"
+  done
+
+  my_fileGRD="$(strTrim "${my_fileGRD}" 2)"
+  my_fileGRDLNK="$(strTrim "${my_fileGRDLNK}" 2)"
+  unset domstr ido foundFilePath
+  # ---------- END:: Bathymetry files
+
+
+  # ---------- BEG:: Initialization/restart files
+  #
+  # We need to have "init" files for all ROMS domains
+  for ((ido = 0; ido < ${nDOMS}; ido++))
+  do
+    domstr="_d`get2DString $((ido + 1))`"
+    my_FEXPR=
+
+    # check for initial/restart files in "my_DIRS"
+    if [ ${FORCE_INI} -gt 0 ]; then
+      my_FPFX="romsinit${domstr}"
+        my_FEXPR="${my_FPFX}(.*)?$( getDateExpr YMDH ${firstYR} ${firstMO} ${firstDA} ${firstHR} )"
+        my_FEXPR="${romsPFX}${my_FEXPR}(.*)?${romsSFX}(\.n.*)?"
+      my_FEXPR="${my_FEXPR} ${my_FPFX}(\.n.*)?"
+      my_DIRS="${my_data_dir} ${my_data_dir}/ini"
+      fileINILNK="ocn_init${domstr}.nc"
+    else
+      my_FPFX="ocn_rst${domstr}"
+      my_FEXPR="${my_FPFX}_${beg_date}(\.n.*)?"
+      my_DIRS="${out_dir}"
+      fileINILNK="ocn_init${domstr}.nc"
+    fi
+
+    ncdf_getModDataFile "${my_FEXPR}" "${my_DIRS}" "${my_beg_date}"
+
+    fileINI="${foundFilePath}"
+    my_fileINI="${my_fileINI} ${fileINI}"
+    my_fileINILNK="${my_fileINILNK} ${fileINILNK}"
+
+    # get the NTIMES variable from the NetCDF ini file(s) (will be used below)
+    ntimes[${ido}]=0
+    if [ ${FORCE_INI} -le 0 ]; then
+      ncdf_getVar ${fileINI} "ntimes"
+      xpr1="$( echo "${ncdfVarVal}" | awk '{print $1}' )"
+      ntimes[${ido}]=$(String_getInteger "${xpr1}" -1)
+      unset ncdfVarVal
+
+      if [ ${ntimes[${ido}]} -le 0 ]; then
+        procError "problem with NTIMES variable in:" \
+                  "INI_FILE = ${fileINI}"
+      fi
+    fi
+
+    # create the output file names
+    my_fileOUT="${my_fileOUT} ocn_out${domstr}.nc"
+  done
+
+  my_fileINI="$(strTrim "${my_fileINI}" 2)"
+  my_fileINILNK="$(strTrim "${my_fileINILNK}" 2)"
+  my_fileOUT="$(strTrim "${my_fileOUT}" 2)"
+  unset domstr ido foundFilePath
+  # ---------- END:: Initialization/restart files
+
+
+  # ---------- BEG:: Boundary conditions files
+  #
+  # We need to have "boundary" and "climatology" files ONLY for the parent,
+  # largest, ROMS grid (domain: d01)
+  domstr="_d01"
+  my_DIRS="${my_data_dir} ${my_data_dir}/boundary"
+
+  # (A) check for boundary files in "my_DIRS"
+  my_FPFX="romsbry${domstr}"
+  my_FEXPR=
+
+  for ixpr in YMDH YMD YM Y
+  do
+    xpr1="${my_FPFX}(.*)?$( getDateExpr ${ixpr} ${firstYR} ${firstMO} ${firstDA} ${firstHR} )"
+    xpr1="${romsPFX}${xpr1}(.*)?${romsSFX}(\.n.*)?"
+    my_FEXPR="${my_FEXPR} ${xpr1}"
+  done
+  my_FEXPR="${my_FEXPR} ${my_FPFX}(\.n.*)?"
+
+  ncdf_getModDataFile "${my_FEXPR}" "${my_DIRS}" "${my_beg_date}" "${my_end_date}"
+
+  fileBRY="${foundFilePath}"
+  fileBRYLNK="ocn_bry${domstr}.nc"
+  my_fileBRY="$(strTrim "${my_fileBRY} ${fileBRY}" 2)"
+  my_fileBRYLNK="$(strTrim "${my_fileBRYLNK} ${fileBRYLNK}" 2)"
+
+  # (B) check for climatology files in "my_DIRS"
+  my_FPFX="romsclim${domstr}"
+  my_FEXPR=
+
+  for ixpr in YMDH YMD YM Y
+  do
+    xpr1="${my_FPFX}(.*)?$( getDateExpr ${ixpr} ${firstYR} ${firstMO} ${firstDA} ${firstHR} )"
+    xpr1="${romsPFX}${xpr1}(.*)?${romsSFX}(\.n.*)?"
+    my_FEXPR="${my_FEXPR} ${xpr1}"
+  done
+  my_FEXPR="${my_FEXPR} ${my_FPFX}(\.n.*)?"
+
+  ncdf_getModDataFile "${my_FEXPR}" "${my_DIRS}" "${my_beg_date}" "${my_end_date}"
+
+  fileCLI="${foundFilePath}"
+  fileCLILNK="ocn_clim${domstr}.nc"
+  my_fileCLI="$(strTrim "${my_fileCLI} ${fileCLI}" 2)"
+  my_fileCLILNK="$(strTrim "${my_fileCLILNK} ${fileCLILNK}" 2)"
+
+  unset domstr ido foundFilePath
+  # ---------- END:: Boundary conditions files
+
+
+  # ---------- BEG:: Forcing files (if any are required)
+  #
+  # We possibly have "forcing" files for all ROMS domains, but
+  # these will be supplied by the user in a sequential list of
+  # files, which are handled here
+  if [ "${my_USE_FRC}" = "yes" ]; then
+    # Check if the user supplied the forcing data directories;
+    # if not use the DATA_DIR; if DATA_DIR is not defined use the current directory
+    if [ -z "${FRC_DIR}" ]; then
+      if [ -z "${DATA_DIR}" ]; then
+        my_FRC_DIR=". ./forcing"
+      else
+        for idir in ${DATA_DIR}
+        do
+          my_FRC_DIR="${my_FRC_DIR} ${idir} ${idir}/forcing"
+        done
+      fi
+    else
+      my_FRC_DIR="${FRC_DIR}"
+    fi
+    # This removes dublicate entries without sorting the output
+    my_FRC_DIR="$( strRmDuplicate "${my_FRC_DIR}" )"
+
+
+    ##### Check if the user supplied prefixes for the forcing datafiles (mandatory)
+    if [ -z "${FRC_PFX}" ]; then
+      procError "prefix(es) for the input forcing filenames need to be provided" \
+                "this prefix is used to identify the files in the data directory(ies)" \
+                "FRC_DIR  = ${FRC_DIR:-UNDEF}" \
+                "FRC_PFX  = ${FRC_PFX:-UNDEF}"
+    fi
+    my_FPFX=( ${FRC_PFX} )
+
+
+    ##### Check if the user supplied suffixes for the forcing datafiles (optional)
+    myTmpVal=( ${FRC_SFX} )
+    for ((ipfx=0; ipfx<${#my_FPFX[@]}; ipfx++))
+    do
+      idx=${ipfx}
+      if [ -z "${myTmpVal[${idx}]}" ]; then
+        idx=$(( ${ipfx} - 1))
+        [ ${idx} -le 0 ] && idx=0
+      fi
+      my_FSFX[${ipfx}]="${myTmpVal[${idx}]}"
+    done
+    my_FSFX=( ${my_FSFX[@]:0:${#my_FPFX[@]}} )
+    unset idx ipfx myTmpVal
+
+
+    ##### Generate the list of forcing files
+    my_DIRS=
+    for idir in ${my_FRC_DIR}
+    do
+      myTmpVal="${idir} ${idir}${firstYR:+/${firstYR}}"
+      myTmpVal="${myTmpVal} ${idir}${firstYR:+/${firstYR}}${firstMO:+/${firstMO}}"
+      for idir in ${myTmpVal}
+      do
+        `checkDIR -rx "${idir}"` && my_DIRS="${my_DIRS} ${idir}"
+      done
+    done
+    # This removes dublicate entries without sorting the output
+    my_DIRS="$( strRmDuplicate "${my_DIRS}" )"
+
+    for ((ifl = 0; ifl < ${#my_FPFX[@]}; ifl++))
+    do
+      my_FEXPR=
+      for ixpr in YMD YJ YM Y
+      do
+        xpr1="${my_FPFX[${ifl}]}(.*)?$( getDateExpr ${ixpr} ${firstYR} ${firstMO} ${firstDA} )"
+        if [ $? -eq 0 ]; then
+          xpr1="${xpr1}(.*)?${my_FSFX[${ifl}]}(\.n.*)?"
+          my_FEXPR="${my_FEXPR} ${xpr1}"
+        fi
+      done
+      my_FEXPR="${my_FEXPR} ${my_FPFX[${ifl}]}${my_FSFX[${ifl}]}(\.n.*)?"
+
+      ncdf_getModDataFile "${my_FEXPR}" "${my_DIRS}" "${my_beg_date}" "${my_end_date}"
+
+      fileFRC="${foundFilePath}"
+      fileFRCLNK="$( basename "${fileFRC}" )"
+      my_fileFRC="${my_fileFRC} ${fileFRC}"
+      my_fileFRCLNK="${my_fileFRCLNK} ${fileFRCLNK}"
+    done
+
+    my_fileFRC="$(strTrim "${my_fileFRC}" 2)"
+    my_fileFRCLNK="$(strTrim "${my_fileFRCLNK}" 2)"
+
+    my_NFFILES=( ${my_fileFRCLNK} )
+    my_NFFILES="${#my_NFFILES[@]}"
+  fi
+  # ---------- END:: Forcing files (if any are required)
+
+
+  # ---------- BEG:: Prepare the romsINP file
+  # generation frequency of history files (e.g, 6hours * 3600s / 60.0s = 43200 / 60 = 720)
+  # his_freq, my_HISval are in seconds and my_NDEFHIS (below) in number of time steps
+  my_HISval=( ${his_freq:-86400} )
+    my_HISval="$(echo "scale=0; ${my_HISval[0]}" | bc -ql 2>/dev/null)"
+
+  # output restart frequency (e.g, 6hours * 3600s / 60.0s = 43200 / 60 = 720)
+  # rst_freq, my_NRSTval are in seconds and my_NRST (below) in number of time steps
+  my_NRSTval=( ${rst_freq:-86400} )
+    my_NRSTval=" $(echo "scale=0; ${my_NRSTval[0]}" | bc -ql 2>/dev/null)"
+
+  for ((ido = 0; ido < ${nDOMS}; ido++))
+  do
+    # time steps are in seconds
+    my_DTval=600
+    [ -n "${my_domDT:+1}" ] && my_DTval="${my_domDT[${ido}]}"
+    my_DT="${my_DT} $(echo "scale=0; ${my_DTval}/1" | bc -ql 2>/dev/null).0d0"
+
+    # number of barotropic time steps
+    my_NDTFASTval=30
+    [ -n "${my_domNDTFAST:+1}" ] && my_NDTFASTval="${my_domNDTFAST[${ido}]}"
+    my_NDTFAST="${my_NDTFAST} $(echo "scale=0; ${my_NDTFASTval}/1" | bc -ql 2>/dev/null)"
+    
+    # create new history file every "my_NDEFHIS" number of time steps
+    # (one value per domain)
+    my_NDEFHIS="${my_NDEFHIS} $(echo "scale=0; ${my_HISval} / ${my_DTval}" | bc -ql 2>/dev/null)"
+
+    # write "my_NHIS" records of history fields in each history file
+    my_HFRMval=86400
+    [ -n "${my_domHFRM:+1}" ] && my_HFRMval="${my_domHFRM[${ido}]}"
+    my_NHIS="${my_NHIS} $(echo "scale=0; ${my_HFRMval} / ${my_DTval}" | bc -ql 2>/dev/null)"
+
+    # restart flag, 0 = initialization, -1 = use the last restart record
+    my_NRRECval="-1"
+    [ ${FORCE_INI} -gt 0 ] && my_NRRECval=0
+    my_NRREC="${my_NRREC} ${my_NRRECval}"
+
+    # restart frequencies in number of time steps
+    my_NRST="${my_NRST} $(echo "scale=0; ${my_HFRMval} / ${my_DTval}" | bc -ql 2>/dev/null)"
+
+    # run total for rdays (NTIMES = (1day * 86400s / my_DT) * rdays)
+    # NOTE: division in bc honors the scale argument, thus the ")/1" below
+    my_NTIMESval="$(echo "scale=0; (${ntimes[${ido}]} + ( 86400.0 / ${my_DTval} ) * ${rdays})/1" | bc -ql 2>/dev/null)"
+    my_NTIMES="${my_NTIMES} ${my_NTIMESval}"
+  done
+
+  ##### multiple value fields (up to number of requested nests)
+# # Lm
+# xpr1="`Make_BlockText ${romsINP} "Lm" "${my_Lm}" 4 2`"
+# Put_BlockText ${romsINP} "Lm" "${xpr1}"
+# # Mm
+# xpr1="`Make_BlockText ${romsINP} "Mm" "${my_Mm}" 4 2`"
+# Put_BlockText ${romsINP} "Mm" "${xpr1}"
+# # N
+# if [ -n "${my_N:+1}" ]; then
+#   xpr1="`Make_BlockText ${romsINP} "N" "${my_N}" 4 2`"
+#   Put_BlockText ${romsINP} "N" "${xpr1}"
+# fi
+# # theta_s
+# if [ -n "${my_theta_s:+1}" ]; then
+#   xpr1="`Make_BlockText ${romsINP} "theta_s" "${my_theta_s}" 4 2`"
+#   Put_BlockText ${romsINP} "theta_s" "${xpr1}"
+# fi
+# # theta_b
+# if [ -n "${my_theta_b:+1}" ]; then
+#   xpr1="`Make_BlockText ${romsINP} "theta_b" "${my_theta_b}" 4 2`"
+#   Put_BlockText ${romsINP} "theta_b" "${xpr1}"
+# fi
+# # Tcline
+# if [ -n "${my_Tcline:+1}" ]; then
+#   xpr1="`Make_BlockText ${romsINP} "Tcline" "${my_Tcline}" 4 2`"
+#   Put_BlockText ${romsINP} "Tcline" "${xpr1}"
+# fi
+# # Vtransform
+# if [ -n "${my_Vtransform:+1}" ]; then
+#   xpr1="`Make_BlockText ${romsINP} "Vtransform" "${my_Vtransform}" 4 2`"
+#   Put_BlockText ${romsINP} "Vtransform" "${xpr1}"
+# fi
+# # Vstretching
+# if [ -n "${my_Vstretching:+1}" ]; then
+#   xpr1="`Make_BlockText ${romsINP} "Vstretching" "${my_Vstretching}" 4 2`"
+#   Put_BlockText ${romsINP} "Vstretching" "${xpr1}"
+# fi
+
+# # NTIMES
+  xpr1="`Make_BlockText ${romsINP} "NTIMES" "${my_NTIMES}" 4 2`"
+  Put_BlockText ${romsINP} "NTIMES" "${xpr1}"
+  # DT
+  xpr1="`Make_BlockText ${romsINP} "DT" "${my_DT}" 4 2`"
+  Put_BlockText ${romsINP} "DT" "${xpr1}"
+  # NDTFAST
+  xpr1="`Make_BlockText ${romsINP} "NDTFAST" "${my_NDTFAST}" 4 2`"
+  Put_BlockText ${romsINP} "NDTFAST" "${xpr1}"
+  # NRREC
+  xpr1="`Make_BlockText ${romsINP} "NRREC" "${my_NRREC}" 4 2`"
+  Put_BlockText ${romsINP} "NRREC" "${xpr1}"
+  # NRST
+  xpr1="`Make_BlockText ${romsINP} "NRST" "${my_NRST}" 4 2`"
+  Put_BlockText ${romsINP} "NRST" "${xpr1}"
+  # NDEFHIS
+  xpr1="`Make_BlockText ${romsINP} "NDEFHIS" "${my_NDEFHIS}" 4 2`"
+  Put_BlockText ${romsINP} "NDEFHIS" "${xpr1}"
+  # NHIS
+  xpr1="`Make_BlockText ${romsINP} "NHIS" "${my_NHIS}" 4 2`"
+  Put_BlockText ${romsINP} "NHIS" "${xpr1}"
+  # NDEFAVG
+  xpr1="`Make_BlockText ${romsINP} "NDEFAVG" "${my_NDEFHIS}" 4 2`"
+  Put_BlockText ${romsINP} "NDEFAVG" "${xpr1}"
+  # NAVG
+  xpr1="`Make_BlockText ${romsINP} "NAVG" "${my_NHIS}" 4 2`"
+  Put_BlockText ${romsINP} "NAVG" "${xpr1}"
+  # NDEFDIA
+  xpr1="`Make_BlockText ${romsINP} "NDEFDIA" "${my_NDEFHIS}" 4 2`"
+  Put_BlockText ${romsINP} "NDEFDIA" "${xpr1}"
+  # NDIA
+  xpr1="`Make_BlockText ${romsINP} "NDIA" "${my_NHIS}" 4 2`"
+  Put_BlockText ${romsINP} "NDIA" "${xpr1}"
+  # NDEFTLM
+  xpr1="`Make_BlockText ${romsINP} "NDEFTLM" "${my_NDEFHIS}" 4 2`"
+  Put_BlockText ${romsINP} "NDEFTLM" "${xpr1}"
+  # NTLM
+  xpr1="`Make_BlockText ${romsINP} "NTLM" "${my_NHIS}" 4 2`"
+  Put_BlockText ${romsINP} "NTLM" "${xpr1}"
+  # NDEFADJ
+  xpr1="`Make_BlockText ${romsINP} "NDEFADJ" "${my_NDEFHIS}" 4 2`"
+  Put_BlockText ${romsINP} "NDEFADJ" "${xpr1}"
+  # NADJ
+  xpr1="`Make_BlockText ${romsINP} "NADJ" "${my_NHIS}" 4 2`"
+  Put_BlockText ${romsINP} "NADJ" "${xpr1}"
+
+  # ---------- Input files
+  # GRDNAME
+  xpr1="`Make_BlockText ${romsINP} "GRDNAME" "${my_fileGRDLNK}" 1 2`"
+  Put_BlockText ${romsINP} "GRDNAME" "${xpr1}"
+  # ININAME
+  xpr1="`Make_BlockText ${romsINP} "ININAME" "${my_fileINILNK}" 1 2`"
+  Put_BlockText ${romsINP} "ININAME" "${xpr1}"
+  # BRYNAME
+  xpr1="`Make_BlockText ${romsINP} "BRYNAME" "${my_fileBRYLNK}" 1 2`"
+  Put_BlockText ${romsINP} "BRYNAME" "${xpr1}"
+  # CLMNAME
+  xpr1="`Make_BlockText ${romsINP} "CLMNAME" "${my_fileCLILNK}" 1 2`"
+  Put_BlockText ${romsINP} "CLMNAME" "${xpr1}"
+
+  # ---------- Forcing files
+  if [ "${my_USE_FRC}" = "yes" ]; then
+    # NFFILES
+    xpr1="`Make_BlockText ${romsINP} "NFFILES" "${my_NFFILES}" 4 2`"
+    Put_BlockText ${romsINP} "NFFILES" "${xpr1}"
+    # FRCNAME
+    xpr1="`Make_BlockText ${romsINP} "FRCNAME" "${my_fileFRCLNK}" 1 2`"
+    Put_BlockText ${romsINP} "FRCNAME" "${xpr1}"
+  fi
+
+  # ---------- Output files
+  # GSTNAME
+  xpr1="`echo "${my_fileOUT}" | sed 's/_out/_gst/g'`"
+  xpr1="`Make_BlockText ${romsINP} "GSTNAME" "${xpr1}" 1 2`"
+  Put_BlockText ${romsINP} "GSTNAME" "${xpr1}"
+  # RSTNAME
+  xpr1="`echo "${my_fileOUT}" | sed 's/_out/_rst/g'`"
+  xpr1="`Make_BlockText ${romsINP} "RSTNAME" "${xpr1}" 1 2`"
+  Put_BlockText ${romsINP} "RSTNAME" "${xpr1}"
+  # HISNAME
+  xpr1="`echo "${my_fileOUT}" | sed 's/_out/_his/g'`"
+  xpr1="`Make_BlockText ${romsINP} "HISNAME" "${xpr1}" 1 2`"
+  Put_BlockText ${romsINP} "HISNAME" "${xpr1}"
+  # TLMNAME
+  xpr1="`echo "${my_fileOUT}" | sed 's/_out/_tlm/g'`"
+  xpr1="`Make_BlockText ${romsINP} "TLMNAME" "${xpr1}" 1 2`"
+  Put_BlockText ${romsINP} "TLMNAME" "${xpr1}"
+  # TLFNAME
+  xpr1="`echo "${my_fileOUT}" | sed 's/_out/_tlf/g'`"
+  xpr1="`Make_BlockText ${romsINP} "TLFNAME" "${xpr1}" 1 2`"
+  Put_BlockText ${romsINP} "TLFNAME" "${xpr1}"
+  # ADJNAME
+  xpr1="`echo "${my_fileOUT}" | sed 's/_out/_adj/g'`"
+  xpr1="`Make_BlockText ${romsINP} "ADJNAME" "${xpr1}" 1 2`"
+  Put_BlockText ${romsINP} "ADJNAME" "${xpr1}"
+  # AVGNAME
+  xpr1="`echo "${my_fileOUT}" | sed 's/_out/_avg/g'`"
+  xpr1="`Make_BlockText ${romsINP} "AVGNAME" "${xpr1}" 1 2`"
+  Put_BlockText ${romsINP} "AVGNAME" "${xpr1}"
+  # DIANAME
+  xpr1="`echo "${my_fileOUT}" | sed 's/_out/_dia/g'`"
+  xpr1="`Make_BlockText ${romsINP} "DIANAME" "${xpr1}" 1 2`"
+  Put_BlockText ${romsINP} "DIANAME" "${xpr1}"
+  # STANAME
+  xpr1="`echo "${my_fileOUT}" | sed 's/_out/_sta/g'`"
+  xpr1="`Make_BlockText ${romsINP} "STANAME" "${xpr1}" 1 2`"
+  Put_BlockText ${romsINP} "STANAME" "${xpr1}"
+  # FLTNAME
+  xpr1="`echo "${my_fileOUT}" | sed 's/_out/_flt/g'`"
+  xpr1="`Make_BlockText ${romsINP} "FLTNAME" "${xpr1}" 1 2`"
+  Put_BlockText ${romsINP} "FLTNAME" "${xpr1}"
+  # ---------- END:: Prepare the romsINP file
+
+
+  # ---------- BEG:: Make the links to the data/input files
+  if [ -n "${my_fileGRD:+1}" ]; then
+    file1=( ${my_fileGRD} )
+    file2=( ${my_fileGRDLNK} )
+    nfiles=${#file1[@]}
+    for ((ifl = 0; ifl < ${nfiles}; ifl++))
+    do
+      linkFILE ${file1[${ifl}]} ${file2[${ifl}]}
+    done
+  fi
+
+  if [ -n "${my_fileINI:+1}" ]; then
+    file1=( ${my_fileINI} )
+    file2=( ${my_fileINILNK} )
+    nfiles=${#file1[@]}
+    for ((ifl = 0; ifl < ${nfiles}; ifl++))
+    do
+      linkFILE ${file1[${ifl}]} ${file2[${ifl}]}
+    done
+  fi
+
+  if [ -n "${my_fileBRY:+1}" ]; then
+    file1=( ${my_fileBRY} )
+    file2=( ${my_fileBRYLNK} )
+    nfiles=${#file1[@]}
+    for ((ifl = 0; ifl < ${nfiles}; ifl++))
+    do
+      linkFILE ${file1[${ifl}]} ${file2[${ifl}]}
+    done
+  fi
+
+  if [ -n "${my_fileCLI:+1}" ]; then
+    file1=( ${my_fileCLI} )
+    file2=( ${my_fileCLILNK} )
+    nfiles=${#file1[@]}
+    for ((ifl = 0; ifl < ${nfiles}; ifl++))
+    do
+      linkFILE ${file1[${ifl}]} ${file2[${ifl}]}
+    done
+  fi
+
+  if [ "${my_USE_FRC}" = "yes" ]; then
+    file1=( ${my_fileFRC} )
+    file2=( ${my_fileFRCLNK} )
+    nfiles=${#file1[@]}
+    for ((ifl = 0; ifl < ${nfiles}; ifl++))
+    do
+      linkFILE ${file1[${ifl}]} ${file2[${ifl}]}
+    done
+  fi
+  # ---------- END:: Make the links to the data/input files
+
+  romsLINKFILES="${my_fileGRDLNK} ${my_fileINILNK} ${my_fileBRYLNK} ${my_fileCLILNK} ${my_fileFRCLNK}"
+  export romsLINKFILES
+}
+
+Modify_WRFConfig()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local -i ido nDOMS
+  local -i ifl nfiles
+
+  local file1 file2
+
+  local my_USE_ROMS my_USE_WRF my_USE_SWAN my_USE_SED
+
+  local my_data_dir
+  local my_beg_date my_end_date
+  local beg_date end_date beg_jul end_jul
+  local chk_date chk_jul chk_jul1 chk_jul2
+
+  local my_FPFX my_FEXPR my_DIRS
+  local fileINI my_fileINI fileINILNK my_fileINILNK
+  local fileBRY my_fileBRY fileBRYLNK my_fileBRYLNK
+
+  local my_DT   my_domDT   my_DTval
+  local my_HIS  my_domHIS  my_HISval
+  local my_HFRM my_domHFRM my_HFRMval
+  local my_NRST my_domNRST my_NRSTval
+
+  local ixpr xpr1 xpr2 xpr3 xpr4 domstr
+
+  unset wrfLINKFILES
+
+  # The environment variables USE_* should be already set before calling this function.
+  my_USE_ROMS="`getYesNo "${USE_ROMS:-no}"`"
+  my_USE_WRF="`getYesNo "${USE_WRF:-no}"`"
+  my_USE_SWAN="`getYesNo "${USE_SWAN:-no}"`"
+
+  [ "${my_USE_WRF}" = "no" ] && return 0
+
+  if [ -z "${wrfINP}" ]; then
+    procError "need to define both USE_WRF=yes" \
+              "USE_WRF  = ${my_USE_WRF}" \
+              "wrfINP  = ${wrfINP:-UNDEF}"
+  fi
+
+  if ! `checkFILE -r "${wrfINP}"`; then
+    procError "couldn't locate the input file:" \
+              "wrfINP  = ${wrfINP:-UNDEF}"
+  fi
+
+
+  # ---------- BEG:: Initialize local variables
+  nDOMS=$(String_getInteger "${wrfDOMS:-1}" 1)
+  my_data_dir="${DATA_DIR:-.}"
+
+  # number of time-steps between writing fields into history file
+  if [ -n "${wrfHFRM:+1}" ]; then
+    my_domHFRM=( ${wrfHFRM} )
+    if [ ${nDOMS} -gt ${#my_domHFRM[@]} ]; then
+      procError "need to specify ${nDOMS} values for wrfHFRM" \
+                "WRF Domains = ${nDOMS}" \
+                "    wrfHFRM = ${wrfHFRM:-UNDEF}"
+    fi
+  fi
+
+  my_beg_date="${firstYR}-${firstMO}-${firstDA} ${firstHR}:${firstMN}:${firstSC}"
+  my_end_date="${lastYR}-${lastMO}-${lastDA} ${lastHR}:${lastMN}:${lastSC}"
+
+  beg_date="$( getDate --date="${my_beg_date}" --fmt='+%F_%T' )"
+  if [ $? -ne 0 ]; then
+    procError "wrong \"start\" date for the simulation." \
+              "first DATE = ${my_beg_date}"
+  fi
+
+  end_date="$( getDate --date="${my_end_date}" --fmt='+%F_%T' )"
+  if [ $? -ne 0 ]; then
+    procError "wrong \"end\" date for the simulation." \
+              "last DATE = ${my_end_date}"
+  fi
+
+  beg_jul=$( getDate --date="${my_beg_date}" --fmt='+%s' )
+  end_jul=$( getDate --date="${my_end_date}" --fmt='+%s' )
+  if [ ${end_jul} -lt ${beg_jul} ]; then
+    procError "wrong \"end\" date for the simulation: SimEnd >= SimBeg." \
+              "first DATE = ${my_beg_date}" \
+              " last DATE = ${my_end_date}"
+  fi
+  # ---------- END:: Initialize local variables
+
+
+  # ---------- BEG:: Initialization/restart files
+  #
+  # We need to have "init" files for all WRF domains
+  for ((ido = 0; ido < ${nDOMS}; ido++))
+  do
+    domstr="_d`get2DString $((ido + 1))`"
+    my_FEXPR=
+
+    # check for initial/restart files in "my_DIRS"
+    if [ "${FORCE_INI}" -gt 0 ]; then
+      my_FPFX="wrfinput${domstr}"
+        my_FEXPR="${my_FPFX}(.*)?$( getDateExpr YMDH ${firstYR} ${firstMO} ${firstDA} ${firstHR} )"
+        my_FEXPR="${wrfPFX}${my_FEXPR}(.*)?${wrfSFX}(\.n.*)?"
+      my_FEXPR="${my_FEXPR} ${my_FPFX}(\.n.*)?"
+      my_DIRS="${my_data_dir} ${my_data_dir}/ini"
+      fileINILNK="${my_FPFX}"
+    else
+      my_FPFX="wrfrst${domstr}"
+      my_FEXPR="atm_rst${domstr}_${beg_date}(\.n.*)?"
+      my_DIRS="${out_dir}"
+      fileINILNK="${my_FPFX}_${beg_date}"
+    fi
+
+    #ncdf_getModDataFile "${my_FEXPR}" "${my_DIRS}" "${my_beg_date}"
+    ncdf_getModDataFile "${my_FEXPR}" "${my_DIRS}"
+
+    fileINI="${foundFilePath}"
+    my_fileINI="${my_fileINI} ${fileINI}"
+    my_fileINILNK="${my_fileINILNK} ${fileINILNK}"
+  done
+
+  my_fileINI="$(strTrim "${my_fileINI}" 2)"
+  my_fileINILNK="$(strTrim "${my_fileINILNK}" 2)"
+  unset domstr ido foundFilePath
+  # ---------- END:: Initialization/restart files
+
+
+  # ---------- BEG:: Boundary conditions files
+  #
+  # We need to have "boundary" files ONLY for the parent,
+  # largest, WRF grid (domain: d01)
+  domstr="_d01"
+  my_DIRS="${my_data_dir} ${my_data_dir}/boundary"
+
+  # check for boundary files in "my_DIRS"
+  my_FPFX="wrfbdy${domstr}"
+  my_FEXPR=
+
+  for ixpr in YMDH YMD YM Y
+  do
+    xpr1="${my_FPFX}(.*)?$( getDateExpr ${ixpr} ${firstYR} ${firstMO} ${firstDA} ${firstHR} )"
+    xpr1="${wrfPFX}${xpr1}(.*)?${wrfSFX}(\.n.*)?"
+    my_FEXPR="${my_FEXPR} ${xpr1}"
+  done
+  my_FEXPR="${my_FEXPR} ${my_FPFX}(\.n.*)?"
+
+  #ncdf_getModDataFile "${my_FEXPR}" "${my_DIRS}" "${my_beg_date}" "${my_end_date}"
+  ncdf_getModDataFile "${my_FEXPR}" "${my_DIRS}"
+
+  fileBRY="${foundFilePath}"
+  fileBRYLNK="${my_FPFX}"
+  my_fileBRY="$(strTrim "${my_fileBRY} ${fileBRY}" 2)"
+  my_fileBRYLNK="$(strTrim "${my_fileBRYLNK} ${fileBRYLNK}" 2)"
+
+
+  # -----
+  # If we use sst_update=1 check for wrflowinp files (one per domain)
+  xpr1="$( echo "`getNameListVar ${wrfINP} sst_update`" | awk '{print $3}' )"
+  xpr1="`getPosInteger "${xpr1}"`"
+ 
+  if [ ${xpr1:-0} -gt 0 ]; then
+    for ((ido = 0; ido < ${nDOMS}; ido++))
+    do
+      domstr="_d`get2DString $((ido + 1))`"
+
+      # check for low boundary files in "my_DIRS"
+      my_FPFX="wrflowinp${domstr}"
+      my_FEXPR=
+
+      for ixpr in YMDH YMD YM Y
+      do
+        xpr1="${my_FPFX}(.*)?$( getDateExpr ${ixpr} ${firstYR} ${firstMO} ${firstDA} ${firstHR} )"
+        xpr1="${wrfPFX}${xpr1}(.*)?${wrfSFX}(\.n.*)?"
+        my_FEXPR="${my_FEXPR} ${xpr1}"
+      done
+      my_FEXPR="${my_FEXPR} ${my_FPFX}(\.n.*)?"
+
+      #ncdf_getModDataFile "${my_FEXPR}" "${my_DIRS}" "${my_beg_date}" "${my_end_date}"
+      ncdf_getModDataFile "${my_FEXPR}" "${my_DIRS}"
+
+      fileBRY="${foundFilePath}"
+      fileBRYLNK="${my_FPFX}"
+      my_fileBRY="$(strTrim "${my_fileBRY} ${fileBRY}" 2)"
+      my_fileBRYLNK="$(strTrim "${my_fileBRYLNK} ${fileBRYLNK}" 2)"
+    done
+  fi
+
+  unset domstr foundFilePath
+  # ---------- END:: Boundary conditions files
+
+
+  # ---------- BEG:: Prepare the wrfINP file
+  # time steps are in seconds
+  my_DTval=( ${wrfDT:-300} )
+    my_DT="${my_DT} $(echo "scale=0; ${my_DTval[0]}/1" | bc -ql 2>/dev/null)"
+
+  # generation frequency of history files (e.g, 6hours * 3600s / 60.0s = 43200 / 60 = 720)
+  # his_freq in seconds and my_HIS (below) in minutes
+  my_HISval=( ${his_freq:-86400} )
+    my_HISval="$(echo "scale=0; ${my_HISval[0]}/1" | bc -ql 2>/dev/null)"
+
+  # output restart frequency (e.g, 6hours * 3600s / 60.0s = 43200 / 60 = 720)
+  # rst_freq in seconds and my_NRST (below) in minutes
+  my_NRSTval=( ${rst_freq:-86400} )
+    my_NRST="${my_NRST} $(echo "scale=0; ${my_NRSTval[0]} / 60.0" | bc -ql 2>/dev/null)"
+ 
+  for ((ido = 0; ido < ${nDOMS}; ido++))
+  do
+    # get history output times (in seconds)
+    my_HFRMval=86400
+    [ -n "${my_domHFRM:+1}" ] && my_HFRMval="${my_domHFRM[${ido}]}"
+    
+    # history output times (in minutes)
+    my_HIS="${my_HIS} $(echo "scale=0; ${my_HFRMval} / 60.0" | bc -ql 2>/dev/null)"
+
+    # history field frames per history file
+    my_HFRM="${my_HFRM} $(echo "scale=0; ${my_HISval} / ${my_HFRMval}" | bc -ql 2>/dev/null)"
+  done
+
+  # ---------- SIMULATION LENGTH
+
+  # ---------- START DATE
+  # start_year
+    ModifyNameListVar ${wrfINP} start_year   "${firstYR}" ${nDOMS}
+  # start_month
+    ModifyNameListVar ${wrfINP} start_month  "${firstMO}" ${nDOMS}
+  # start_day
+    ModifyNameListVar ${wrfINP} start_day    "${firstDA}" ${nDOMS}
+  # start_hour
+    ModifyNameListVar ${wrfINP} start_hour   "${firstHR}" ${nDOMS}
+  # start_minute
+    ModifyNameListVar ${wrfINP} start_minute "${firstMN}" ${nDOMS}
+  # start_second
+    ModifyNameListVar ${wrfINP} start_second "${firstSC}" ${nDOMS}
+
+  # ---------- END DATE
+  # end_year
+    ModifyNameListVar ${wrfINP} end_year   "${lastYR}" ${nDOMS}
+  # end_month
+    ModifyNameListVar ${wrfINP} end_month  "${lastMO}" ${nDOMS}
+  # end_day
+    ModifyNameListVar ${wrfINP} end_day    "${lastDA}" ${nDOMS}
+  # end_hour
+    ModifyNameListVar ${wrfINP} end_hour   "${lastHR}" ${nDOMS}
+  # end_minute
+    ModifyNameListVar ${wrfINP} end_minute "${lastMN}" ${nDOMS}
+  # end_second
+    ModifyNameListVar ${wrfINP} end_second "${lastSC}" ${nDOMS}
+
+  # ---------- HISTORY FIELDS
+  # history_interval
+    ModifyNameListVar ${wrfINP} history_interval "${my_HIS}"
+  # frames_per_outfile
+    ModifyNameListVar ${wrfINP} frames_per_outfile "${my_HFRM}"
+
+  # ---------- RESTART PARAMETERS
+  # restart flag
+    if [ ${FORCE_INI} -gt 0 ]; then
+      ModifyNameListVar ${wrfINP} restart ".false."
+    else
+      ModifyNameListVar ${wrfINP} restart ".true."
+    fi
+  # restart_interval
+    ModifyNameListVar ${wrfINP} restart_interval "${my_NRST}"
+
+  # ---------- TIME STEPS
+  # time_step
+    ModifyNameListVar ${wrfINP} time_step "${my_DT}"
+
+  # ---------- ALBEDO
+  # make sure we are using monthly albedo values (instead of one table value)
+    ModifyNameListVar ${wrfINP} usemonalb  ".true."
+  # ---------- END:: Prepare the wrfINP file
+
+
+  # ---------- BEG:: Make the links to the data/input files
+  if [ -n "${my_fileINI:+1}" ]; then
+    file1=( ${my_fileINI} )
+    file2=( ${my_fileINILNK} )
+    nfiles=${#file1[@]}
+    for ((ifl = 0; ifl < ${nfiles}; ifl++))
+    do
+      linkFILE ${file1[${ifl}]} ${file2[${ifl}]}
+    done
+  fi
+
+  if [ -n "${my_fileBRY:+1}" ]; then
+    file1=( ${my_fileBRY} )
+    file2=( ${my_fileBRYLNK} )
+    nfiles=${#file1[@]}
+    for ((ifl = 0; ifl < ${nfiles}; ifl++))
+    do
+      linkFILE ${file1[${ifl}]} ${file2[${ifl}]}
+    done
+  fi
+  # ---------- END:: Make the links to the data/input files
+
+  wrfLINKFILES="${my_fileINILNK} ${my_fileBRYLNK}"
+  export wrfLINKFILES
+}
+
+Modify_SWANConfig()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local my_USE_SWAN=
+  local ini_date rst_date
+
+  unset swanLINKFILES
+
+  # The environment variables USE_* should be already set before calling this function.
+  my_USE_SWAN="`getYesNo "${USE_SWAN:-no}"`"
+
+  [ "${my_USE_SWAN}" = "no" ] && return 0
+
+  if [ -z "${swanINP}" ]; then
+    procError "need to define both USE_SWAN=yes and the SWAN input file" \
+              "USE_SWAN = ${my_USE_SWAN}" \
+              "swanINP  = ${swanINP:-UNDEF}"
+  fi
+
+  if ! `checkFILE -r "${swanINP}"`; then
+    procError "couldn't locate the input file:" \
+              "swanINP  = ${swanINP:-UNDEF}"
+  fi
+
+  # ---------- Setup various dates and variables to be used below.
+  ini_date="${firstYR:+${firstYR}}${firstMO:+${firstMO}}"
+  msg_date="${firstYR:+${firstYR}}${firstMO:+-${firstMO}}${firstDA:+-${firstDA}}"
+  rst_date="${msg_date:+${msg_date}_00:00:00}"
+
+  swanLINKFILES=
+  export swanLINKFILES
+}
+
+Get_ROMSDateString()
+{
+  local -i retval=0
+  local my_file="${1}" my_cdf my_time="ocean_time"
+  local curT_str cur_DATE cur_HH cur_MM cur_SS
+  local idx
+
+  unset ROMSDateString
+
+  ncdf_getVar "${my_file}" "${my_time}" "-v" 2>&1
+  curT_str="$(echo ${ncdfVarVal})"
+  curT_str=( $(tr ' ' '\n' <<<${curT_str} | cat -n | sort -k2,2nr | head -n1) )
+  idx=$(( ${curT_str[0]} - 1 ))
+
+  ncdf_getVar "${my_file}" "${my_time}" "-t -v"
+  curT_str="$(echo ${ncdfVarVal})"
+  curT_str="$(echo ${curT_str} | sed 's/\"[[:space:]]\"/\",\"/g' | sed 's/[[:space:]]/_/g')"
+  curT_str=( $(echo ${curT_str} | sed 's/\",\"/\" \"/g') )
+  curT_str="$(echo ${curT_str[${idx}]} | sed 's/[;:,_\"\{\}]/ /g')"
+
+  cur_DATE="`echo "${curT_str}" | awk '{ printf $1 }'`"
+  cur_HH="`echo "${curT_str}" | awk '{ printf $2 }'`"
+    [ -z "${cur_HH}" ] && cur_HH="00"
+  cur_MM="`echo "${curT_str}" | awk '{ printf $3 }'`"
+    [ -z "${cur_MM}" ] && cur_MM="00"
+  cur_SS="00"
+
+  # unset any global variables that are not needed outside this function
+  unset ncdfVarVal
+
+  export  ROMSDateString="${cur_DATE:+${cur_DATE}_}${cur_HH}:${cur_MM}:${cur_SS}"
+
+  return ${retval}
+}
+
+RunModelAs()
+{
+  local -i modFLG
+  local out_str my_PROG
+  local my_USE_CPL my_USE_WRF my_USE_ROMS my_USE_SWAN my_USE_SED
+
+  # The environment variables USE_* should be already set before calling this function.
+  my_USE_CPL="`getYesNo  "${COUPLED_SYSTEM:-no}"`"
+  my_USE_WRF="`getYesNo  "${USE_WRF:-no}"`"
+  my_USE_ROMS="`getYesNo "${USE_ROMS:-no}"`"
+  my_USE_SWAN="`getYesNo "${USE_SWAN:-no}"`"
+  my_USE_SED="`getYesNo  "${USE_SED:-no}"`"
+
+  [ "${my_USE_ROMS}" = "yes" ] && modFLG=$(( ${modFLG} + 1 ))
+  [ "${my_USE_WRF}"  = "yes" ] && modFLG=$(( ${modFLG} + 1 ))
+  [ "${my_USE_SWAN}" = "yes" ] && modFLG=$(( ${modFLG} + 1 ))
+
+  my_PROG="${progDIR:+${progDIR}/}${progNAME}"
+  if `checkPROG -r "${my_PROG}"`; then
+    if [ "${COUPLED_SYSTEM}" = "no" ]; then
+      if [ ${modFLG} -eq 1 ]; then
+        [ "${my_USE_ROMS}" = "yes" ] && \
+          out_str="${my_PROG}${MODEL_INP:+ ${MODEL_INP}}"
+
+        [ "${my_USE_WRF}" = "yes" ] && \
+          out_str="${my_PROG}"
+
+        [ "${my_USE_SWAN}" = "yes" ] && \
+          out_str="${my_PROG}${MODEL_INP:+ ${MODEL_INP}}"
+      fi
+    else
+      out_str="${my_PROG}${MODEL_INP:+ ${MODEL_INP}}"
+    fi
+  fi
+
+  echo -n "${out_str}"
+}
+
+move_files()
+{
+  local i j k
+  local my_files f_inp f_out f_sfx f_date
+  local logfile
+  local my_USE_CPL my_USE_WRF my_USE_ROMS my_USE_SWAN my_USE_SED
+
+  logfile="${log_script:-logfile.log}"
+
+  # The environment variables USE_* should be already set before calling this function.
+  my_USE_CPL="`getYesNo "${COUPLED_SYSTEM:-no}"`"
+  my_USE_WRF="`getYesNo "${USE_WRF:-no}"`"
+  my_USE_ROMS="`getYesNo "${USE_ROMS:-no}"`"
+  my_USE_SWAN="`getYesNo "${USE_SWAN:-no}"`"
+  my_USE_SED="`getYesNo "${USE_SED:-no}"`"
+
+
+  #------------------------------------------------------------
+  # ATMOSPHERE/WRF OUTPUT FILES
+  if [ "${my_USE_WRF}" = "yes" ]; then
+    # First remove any links created during the simulation
+    if [ -n "${wrfLINKFILES:+1}" ]; then
+      my_files="${wrfLINKFILES}"
+      for i in ${my_files}
+      do
+        if `checkFILE -rL "${i}"`; then
+          echo "       Removing:  ${i}" >> ${logfile}
+          rm -f "${i}"
+        fi
+      done
+    fi
+
+    # Next rename and move output files created during the simulation
+    my_files="namelist*.output* wrfout_* wrfrst_* rsl*"
+    for i in ${my_files}
+    do
+      f_inp="${i}"
+      if `checkFILE -r "${f_inp}"`; then
+        # output file names
+        if [ -n "$( isNcdf "${f_inp}" )" ]; then
+          f_sfx=".nc"
+        else
+          f_sfx=".dat"
+        fi
+
+        f_out="${f_inp%*${f_sfx}}"
+        f_out="$(echo ${f_out} | sed 's/wrfout/his/g')"
+        f_out="$(echo ${f_out} | sed 's/wrfrst/rst/g')"
+        f_out="${out_dir:+${out_dir}/}atm_${f_out}${f_sfx}"
+
+        echo "       Moving:  ${f_inp} -> ${f_out}" >> ${logfile}
+        mv -f "${f_inp}" "${f_out}"
+      fi
+    done
+  fi # END WRF
+
+
+  #------------------------------------------------------------
+  # OCEAN/ROMS OUTPUT FILES
+  if [ "${my_USE_ROMS}" = "yes" ]; then
+    # First remove any links created during the simulation
+    if [ -n "${romsLINKFILES:+1}" ]; then
+      my_files="${romsLINKFILES}"
+      for i in ${my_files}
+      do
+        if `checkFILE -rL "${i}"`; then
+          echo "       Removing:  ${i}" >> ${logfile}
+          rm -f "${i}"
+        fi
+      done
+    fi
+    
+    # Next rename and move output files created during the simulation
+    my_files="ocn_gst* ocn_rst* ocn_his*
+              ocn_tlm* ocn_tlf* ocn_adj*
+              ocn_avg* ocn_dia* ocn_sta*
+              ocn_flt*
+             "
+    for i in ${my_files}
+    do
+      f_inp="${i}"
+      if `checkFILE -r "${f_inp}"`; then
+        # output file names
+        #f_date="$( ncdf_getTimeStamp "${f_inp}" | awk '{print $1}' )"
+        f_date=( $( ncdf_getTimeStamp "${f_inp}" ) )
+        [ ${#f_date[@]} -ne 0 ] && f_date="${f_date[${#f_date[@]}-1]}"
+        
+
+        if [ -n "$( isNcdf "${f_inp}" )" ]; then
+          f_sfx=".nc"
+        else
+          f_sfx=".dat"
+        fi
+
+        f_out="$(strstr ${f_inp} "_[0-9]*")"
+        f_out="${f_inp%*${f_out}}"
+        f_out="${f_out%*${f_sfx}}"
+        f_out="${out_dir:+${out_dir}/}${f_out}${f_date:+_${f_date}}${f_sfx}"
+
+        echo "       Moving:  ${f_inp} -> ${f_out}" >> ${logfile}
+        mv -f "${f_inp}" "${f_out}"
+      fi
+    done
+  fi # END ROMS
+
+  #------------------------------------------------------------
+  # WAVES/SWAN OUTPUT FILES
+  if [ "${my_USE_SWAN}" = "yes" ]; then
+    # First remove any links created during the simulation
+    if [ -n "${swanLINKFILES:+1}" ]; then
+      my_files="${swanLINKFILES}"
+      for i in ${my_files}
+      do
+        if `checkFILE -rL "${i}"`; then
+          echo "       Removing:  ${i}" >> ${logfile}
+          rm -f "${i}"
+        fi
+      done
+    fi
+  fi # END SWAN
+
+  #------------------------------------------------------------
+  # MOAB OUTPUT FILES
+  for i in moab_error.log moab_output.log
+  do
+    f_inp="${i}"
+    if `checkFILE -r "${f_inp}"`; then
+      f_out="${f_inp}"
+      f_out="${log_dir:+${log_dir}/}${f_out:+${f_out}}"
+      echo "       Moving:  ${f_inp} -> ${f_out}" >> ${log_script}
+      mv -f "${f_inp}" "${f_out}"
+    fi
+  done # END MOAB
+}

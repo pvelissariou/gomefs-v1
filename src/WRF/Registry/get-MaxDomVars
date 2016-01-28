@@ -1,0 +1,37 @@
+#!/bin/bash
+
+out_file=fort-reg.txt
+tmp_file=${out_file}-tmp
+
+if [ -f ${out_file} ]; then
+  ft="$(stat -c %y ${out_file} 2>/dev/null | cut -d. -f1 | sed 's/[ \t]/_/g')"
+  if [ -n "${ft:+1}" ]; then
+    ft="_${ft}"
+  else
+    ft=".backup"
+  fi
+  mv -f ${out_file} ${out_file}${ft}
+fi
+
+for reg in registry* Registry*
+do
+  grep '^rconfig' ${reg} |awk '$5=="max_domains"{printf "  %s,\n", tolower($8)}' | sort | uniq >> ${out_file}
+done
+
+if [ -f ${out_file} ]; then
+  in_var=( $(cat ${out_file} | sort | uniq | grep '^[ \t]*"' | grep '",$' | grep -v '"",') )
+  n1=0
+  n2=${#in_var[@]}
+  icnt=0
+  for ((i = ${n1}; i < ${n2}; i++))
+  do
+    echo -n " ${in_var[$i]}" >> ${tmp_file}
+    icnt=$(( ${icnt} + 1 ))
+    if [ ${icnt} -eq 3 ]; then
+      icnt=0
+      echo                   >> ${tmp_file}
+    fi
+  done
+  cat ${tmp_file} > ${out_file}
+  rm -f ${tmp_file}
+fi

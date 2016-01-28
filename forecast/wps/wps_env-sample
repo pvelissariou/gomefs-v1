@@ -1,0 +1,151 @@
+############################################################
+# This is a template of environment file "wps_env" that it is
+#   sourced from within the "run_wps.sh" script.
+# It is a "bash" style file.
+# All the variables defined here can also be passed to the
+#   script in the command line (options passed in the command line
+#   overwrite the values of the variables supplied here.
+# To see the options that can be passed to the "run_wps.sh" script
+#   run the scripts as: run_wps.sh -h(--help)
+
+# Author:  Panagiotis Velissariou <pvelissariou@fsu.edu>
+#                                 <velissariou.1@osu.edu>
+# Version: 1.0
+#
+# Version - 1.0 Sat Apr 25 2015
+############################################################
+
+
+#####
+# The main (root) WPS directory. If it is not defined it
+#   defaults to the directory where the "run_wps.sh" script
+#   is located.
+WPS_DIR=
+
+
+#####
+# GEOG_DIR: The full path to the WPS Geography data
+# DATA_DIR: The full path(s) to the GFS, SST, ... data
+#           used to create the WRF input files.
+#           All the data can be in a single directory or
+#           they can be stored in multiple directories.
+#           NOTE: The sequence of the directories should
+#                 exactly follow the sequense defined for
+#                 the variable DATA_TYPE (see below)
+GEOG_DIR=/nexsan/people/takis/DATA-GEOG/
+DATA_DIR="/nexsan/people/takis/DATA-GFS/ds083.2-grib1
+          /nexsan/people/takis/DATA-HYCOM/Data/gom_GLBa0.08"
+
+
+#####
+# The dates for "start" and "end" of the simulation.
+# Format: same is in the "date" command.
+#         usually: YYYY-MM-DD [HH:MN:SC]
+# It is best to supply these from the command line.
+SimBeg=
+SimEnd=
+
+
+#####
+# DATA_TYPE: The sequence of the data types to be used
+#            for the creation of the WRF input files.
+#            Can be one or more of the WRF default Vtable.*:
+#              AGRWRF ARW ARWP AWIP CFSR2_WEB ECMWF
+#              ERA-INTERIM.ML ERA-INTERIM.PL GFDL GFS
+#              GGODAS GSM NAM NARR NCEP2 NNRP NOGAP
+#              TCRP UKMO_LANDSEA SST
+#            or user supplied data types (accompanied by the Vtables)
+# DATA_PFX:  The prefix(es) used in the datafile names
+#              (same sequense with DATA_TYPE sequense).
+#            This makes easier to identify what data to use
+#              (do not include the date portion in the filename).
+# DATA_SFX:  The suffix(es) used in the datafile names
+#              (usually the file extension, or the string after
+#               the date part of the filename)
+#            NOTE: If only one suffix is supplied it will be assigned to all
+#                  data filenames. Multiple suffixes should again follow
+#                  the order defined in DATA_TYPE
+# DATE_EXPR: The regular expression for the date in the data filenames
+#            Can be one or more of: YMDH YMD MDYH MDY DMYH DMY YJH YJ
+#            where: Y denotes the presence of the year
+#                     in the date part of the data filename
+#                   M denotes the presence of the month of the year
+#                     in the date part of the data filename
+#                   D denotes the presence of the day of the month
+#                     in the date part of the data filename
+#                   H denotes the presence of the hour of the day
+#                     in the date part of the data filename
+#                   J denotes the presence of the day of the year
+#                     in the date part of the data filename
+#            NOTE: If only one date expression is supplied it will be assigned
+#                  to all data filenames. Multiple date expression should again
+#                  follow the order defined in DATA_TYPE
+# DATA_INTERVAL: The time interval in hours between consecutive data records
+#                  (mainly for the WRF atmospheric forcing data).
+#                Data contained in the DATA_DIR are all scanned regardless the
+#                  the value of  DATA_INTERVAL.
+#                DATA_INTERVAL is used to (a) include at least an extra record
+#                  before and after the simulation times and (b) to modify the
+#                  variables "interval_seconds" and "auxinput4_interval" in the
+#                  "namelist" files.
+#                It can be: 0< DATA_INTERVAL <= 24, default: 6 (usually 1, 3 or 6)
+
+DATA_TYPE="GFS SST"
+DATA_PFX="fnl_ hycom-sst_"
+DATA_SFX="_c .gr"
+DATE_EXPR="YMD YJ"
+DATA_INTERVAL=
+
+
+#####
+# VTABLE_SFX: If the user has Vtables with other suffixes than the default
+#             that correspond to the order in DATA_TYPE.
+#             NOTE: If only one suffix is supplied it will be assigned to all
+#                   Vtable names. Multiple suffixes should again follow
+#                   the order defined in DATA_TYPE.
+#                   If it is empty it is determined internally by the script (recommended)
+VTABLE_SFX=
+
+
+#####
+# In rare cases we might want to include extra records in the WRF boundary
+# conditions files. For this reason the following environment variables
+# can be set (not available from the command line):
+#   (if the programs have been compiled against the MPI libraries).
+# EXTRA_REC_BEFORE: The number of extra records before the "start" simulation date.
+# EXTRA_REC_AFTER : The number of extra records after the "end" simulation date.
+EXTRA_REC_BEFORE=0
+EXTRA_REC_AFTER=0
+
+
+#####
+# MODFILES: The environment modules to be used (if any).
+MODFILES=
+
+
+#####
+# To use "mpirun" during the generation of the WRF input files
+#   (if the programs have been compiled against the MPI libraries).
+# NPROCS:   The number of processors to be used.
+# HOSTFILE: The machine hostfile to be used in the "mpirun" command.
+NPROCS=
+HOSTFILE=
+
+
+#####
+# To remove all working directories after the the simulation
+# has completed.
+# REMOVE_DIR = 0 or 1 (0 = remove directories)
+REMOVE_DIR=0
+
+
+#####
+# To use GNU parallel to run the script "run-wps_sequence.sh"
+# so that each month is simulated in parallel to save time.
+# USE_PARALLEL = 0 or 1 (0 = do not use GNU parallel)
+USE_PARALLEL=0
+GPARAL="parallel"
+GPARAL_OPTS_GLB="--gnu --no-run-if-empty -vv --verbose --progress --halt 1"
+GPARAL_OPTS_SSH="--filter-hosts --slf .."
+GPARAL_OPTS_TIME="--timeout 3600"
+GPARAL_OPTS_RESUME="--resume-failed --retries 1"

@@ -1,0 +1,58 @@
+
+;inp_file = '/nexsan/people/takis/DATA-HYCOM/Data/bath_GLBa0.08_09.nc'
+inp_file = '/nexsan/people/takis/DATA-HYCOM/Data/bath_GLBu0.08_07.nc'
+
+thisLIMIT = [ 10.0, -110.0, 40.0, -60.0]
+
+ncid = ncdf_open(inp_file)
+  varid = ncdf_varid(ncid, 'Longitude')
+  ncdf_varget, ncid, varid, inp_longrid
+
+  varid = ncdf_varid(ncid, 'Latitude')
+  ncdf_varget, ncid, varid, inp_latgrid
+ncdf_close, ncid
+
+NDIMS = size(inp_longrid, /n_dimensions)
+if (NDIMS eq 1) then begin
+  IPNTS = (size(inp_longrid, /dimensions))[0]
+  JPNTS = (size(inp_latgrid, /dimensions))[0]
+  longrid = make_array(IPNTS, JPNTS, /FLOAT, VALUE = !VALUES.F_NAN)
+  latgrid = longrid
+  for i = 0L, JPNTS - 1 do longrid[*, i] = inp_longrid[*]
+  for i = 0L, IPNTS - 1 do latgrid[i, *] = inp_latgrid[*]
+endif else begin
+  IPNTS = (size(longrid, /dimensions))[0]
+  JPNTS = (size(longrid, /dimensions))[1]
+  longrid = inp_longrid
+  latgrid = inp_latgrid
+endelse
+
+; ----------------------------------------
+; Adjust the lon values for the GOM domain
+longrid = ((longrid + 180) MOD 360) - 180
+
+; ----------------------------------------
+; Get only the data relevant to the GoM domain (get the relevant data block)
+hycIDX = where((longrid ge thisLIMIT[1]) and $
+               (longrid le thisLIMIT[3]) and $
+               (latgrid ge thisLIMIT[0]) and $
+               (latgrid le thisLIMIT[2]), hycCNT)
+
+min_val = min(longrid[hycIDX], MAX = max_val)
+  chk_msk = ChkForMask(longrid[hycIDX], min_val, valIDX, valCNT)
+HC_minI = min( (array_indices([IPNTS, JPNTS], hycIDX[valIDX], /DIMENSIONS))[0, *] )
+  chk_msk = ChkForMask(longrid[hycIDX], max_val, valIDX, valCNT)
+HC_maxI = max( (array_indices([IPNTS, JPNTS], hycIDX[valIDX], /DIMENSIONS))[0, *] )
+
+min_val = min(latgrid[hycIDX], MAX = max_val)
+  chk_msk = ChkForMask(latgrid[hycIDX], min_val, valIDX, valCNT)
+HC_minJ = min( (array_indices([IPNTS, JPNTS], hycIDX[valIDX], /DIMENSIONS))[1, *] )
+  chk_msk = ChkForMask(latgrid[hycIDX], max_val, valIDX, valCNT)
+HC_maxJ = max( (array_indices([IPNTS, JPNTS], hycIDX[valIDX], /DIMENSIONS))[1, *] )
+
+print, 'XPNTS: ', IPNTS, format = '(a, i5)'
+print, 'YPNTS: ', JPNTS, format = '(a, i5)'
+print, 'X IDX: ', HC_minI, HC_maxI, format = '(a, 2i5)'
+print, 'Y IDX: ', HC_minJ, HC_maxJ, format = '(a, 2i5)'
+
+end

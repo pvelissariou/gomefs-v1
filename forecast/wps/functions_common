@@ -1,0 +1,4312 @@
+# Author:  Panagiotis Velissariou <pvelissariou@fsu.edu>
+#                                 <velissariou.1@osu.edu>
+# Version: 1.6
+#
+# Version - 1.6 Wed Aug 20 2014
+# Version - 1.5 Wed Jul 16 2014
+# Version - 1.4 Mon Mar  3 2014
+# Version - 1.3 Fri Jul 26 2013
+# Version - 1.2 Sun Jul 21 2013
+# Version - 1.1 Wed Jul 25 2012
+# Version - 1.0 Thu Apr 15 2004
+
+
+#------------------------------------------------------------
+# UTILITY FUNCTIONS
+#------------------------------------------------------------
+
+
+############################################################
+##### ERROR FUNCTIONS
+############################################################
+forceError()
+{
+  local -i status=1
+
+  [ "X${1}" != "X" ] && echo -n  "${1}"
+
+  exit ${status}
+}
+
+# -------------------------------------------------------
+# procError()
+# Usage:      procError Messages
+# Parameters: Messages (string), the list of messages to display (up to 8)
+# Returns:    NONE
+# Echoes:     NONE
+#
+# Prints the error message and issues an exit 1.
+# -------------------------------------------------------
+procError()
+{
+  # These are for the current function (procError)
+  local fnm0="${FUNCNAME[0]}"
+  local snm0="$( basename "${BASH_SOURCE[0]}" )"
+
+  # These are for the calling function(s)
+  local fnm1="${FUNCNAME[1]}"
+  local fnm2="${FUNCNAME[2]}"
+  local fnm3="${FUNCNAME[3]}"
+  local fnm4="${FUNCNAME[4]}"
+  local snm1="$( basename "${BASH_SOURCE[1]}" )"
+  local snm2="$( basename "${BASH_SOURCE[2]}" )"
+  local snm3="$( basename "${BASH_SOURCE[3]}" )"
+  local snm4="$( basename "${BASH_SOURCE[4]}" )"
+
+  local func_str= proc_str=
+  local proc_str1= proc_str2= proc_str3= proc_str4=
+  local proc_str5= proc_str6= proc_str7= proc_str8=
+
+  # Strings to be displayed (if supplied)
+  proc_str1="${1}"
+  proc_str2="${2}"
+  proc_str3="${3}"
+  proc_str4="${4}"
+  proc_str5="${5}"
+  proc_str6="${6}"
+  proc_str7="${7}"
+  proc_str8="${8}"
+
+  proc_str="${proc_str1}${proc_str2}${proc_str3}${proc_str4}"
+  proc_str="${proc_str}${proc_str5}${proc_str6}${proc_str7}${proc_str8}"
+  [ -z "${proc_str}" ] && return 0
+
+  # Strings that identify the calling functions and sources
+  cfnm="${fnm2:+${fnm2}:}${fnm3:+${fnm3}:}${fnm4:+${fnm4}:}"
+    cfnm="${cfnm:+(${cfnm%:})}"
+  csnm="${snm2:+${snm2}:}${snm3:+${snm3}:}${snm4:+${snm4}:}"
+    csnm="${csnm:+(${csnm%:})}"
+
+  func_str="${fnm1}${cfnm:+ ${cfnm}}: called from: ${snm1}${csnm:+ ${csnm}}"
+
+  # Display everything and then issue the exit command
+  [ "X${func_str}" != "X" ]  && echo "ERROR:: ${func_str}"
+  [ "X${proc_str1}" != "X" ] && echo "        ${proc_str1}"
+  [ "X${proc_str2}" != "X" ] && echo "        ${proc_str2}"
+  [ "X${proc_str3}" != "X" ] && echo "        ${proc_str3}"
+  [ "X${proc_str4}" != "X" ] && echo "        ${proc_str4}"
+  [ "X${proc_str5}" != "X" ] && echo "        ${proc_str5}"
+  [ "X${proc_str6}" != "X" ] && echo "        ${proc_str6}"
+  [ "X${proc_str7}" != "X" ] && echo "        ${proc_str7}"
+  [ "X${proc_str8}" != "X" ] && echo "        ${proc_str8}"
+  echo "        Exiting now ..."
+  echo -n
+  exit 1
+}
+
+# -------------------------------------------------------
+# procWarn()
+# Usage:      procWarn Messages
+# Parameters: Messages (string), the list of messages to display (up to 8)
+# Returns:    NONE
+# Echoes:     NONE
+#
+# Prints the warning message and issues an exit 0.
+# -------------------------------------------------------
+procWarn()
+{
+  # These are for the current function (procWarn)
+  local fnm0="${FUNCNAME[0]}"
+  local snm0="$( basename "${BASH_SOURCE[0]}" )"
+
+  # These are for the calling function(s)
+  local fnm1="${FUNCNAME[1]}"
+  local fnm2="${FUNCNAME[2]}"
+  local fnm3="${FUNCNAME[3]}"
+  local fnm4="${FUNCNAME[4]}"
+  local snm1="$( basename "${BASH_SOURCE[1]}" )"
+  local snm2="$( basename "${BASH_SOURCE[2]}" )"
+  local snm3="$( basename "${BASH_SOURCE[3]}" )"
+  local snm4="$( basename "${BASH_SOURCE[4]}" )"
+
+  local func_str= proc_str=
+  local proc_str1= proc_str2= proc_str3= proc_str4=
+  local proc_str5= proc_str6= proc_str7= proc_str8=
+
+  # Strings to be displayed (if supplied)
+  proc_str1="${1}"
+  proc_str2="${2}"
+  proc_str3="${3}"
+  proc_str4="${4}"
+  proc_str5="${5}"
+  proc_str6="${6}"
+  proc_str7="${7}"
+  proc_str8="${8}"
+
+  proc_str="${proc_str1}${proc_str2}${proc_str3}${proc_str4}"
+  proc_str="${proc_str}${proc_str5}${proc_str6}${proc_str7}${proc_str8}"
+  [ -z "${proc_str}" ] && return 0
+
+  # Strings that identify the calling functions and sources
+  cfnm="${fnm2:+${fnm2}:}${fnm3:+${fnm3}:}${fnm4:+${fnm4}:}"
+    cfnm="${cfnm:+(${cfnm%:})}"
+  csnm="${snm2:+${snm2}:}${snm3:+${snm3}:}${snm4:+${snm4}:}"
+    csnm="${csnm:+(${csnm%:})}"
+
+  func_str="${fnm1}${cfnm:+ ${cfnm}}: called from: ${snm1}${csnm:+ ${csnm}}"
+
+  # Display everything and then issue the exit command
+  [ "X${func_str}" != "X" ]  && echo "WARN::  ${func_str}"
+  [ "X${proc_str1}" != "X" ] && echo "        ${proc_str1}"
+  [ "X${proc_str2}" != "X" ] && echo "        ${proc_str2}"
+  [ "X${proc_str3}" != "X" ] && echo "        ${proc_str3}"
+  [ "X${proc_str4}" != "X" ] && echo "        ${proc_str4}"
+  [ "X${proc_str5}" != "X" ] && echo "        ${proc_str5}"
+  [ "X${proc_str6}" != "X" ] && echo "        ${proc_str6}"
+  [ "X${proc_str7}" != "X" ] && echo "        ${proc_str7}"
+  [ "X${proc_str8}" != "X" ] && echo "        ${proc_str8}"
+  echo -n
+
+  return 0
+}
+
+TaskError()
+{
+  local TheTask=
+
+  TheTask="${1}"
+
+  procError "the assigned task \"${TheTask}\" failed" \
+            "please check the log files in: ${LogDir}"
+}
+
+TaskFound()
+{
+  local TheTask=
+
+  TheTask="${1}"
+
+  if [ -f "${TheTask}" ]; then
+    chmod 0755 "${TheTask}"
+    if [ $? -ne 0 ]; then
+      procError "could not change permissions for:" \
+                "TASK_TO_RUN = ${TheTask:-UNKNOWN}"
+    fi
+  else
+    procError "task file not found:" \
+              "TASK_TO_RUN = ${TheTask:-UNKNOWN}"
+  fi
+}
+############################################################
+
+
+############################################################
+##### GENERAL UTILITY FUNCTIONS
+############################################################
+getYesNo()
+{
+  local param= answer=
+  
+  param=`echo "${1}" | tr '[:upper:]' '[:lower:]'`
+
+  if [ "${param}" -eq "${param}" ] 2>/dev/null
+  then
+    [ ${param} -le 0 ] && param=0
+    [ ${param} -gt 0 ] && param=1
+  fi
+
+  case "${param}" in
+    1|y|yes|yea|yeah|yep) answer="yes" ;;
+     0|n|no|not|nop|nope) answer="no"  ;;
+                     *) answer="no"  ;; # DEFAULT
+  esac
+
+  echo -n ${answer}
+}
+
+function StartWatch()
+{
+  export START_DATE="`date`"
+  export START_TIME="`date -d "${START_DATE}" "+%s"`"
+}
+
+function StopWatch()
+{
+  local elps_time start_time stop_time msg=
+
+  export STOP_DATE="`date`"
+  export STOP_TIME="`date -d "${STOP_DATE}" "+%s"`"
+
+  msg="${1}"
+  [ "X${msg}" != "X" ] && msg="${msg} "
+
+  start_time=${START_TIME:-0}
+  stop_time=${STOP_TIME:-0}
+
+  elps_time="`echo "scale=6; (${stop_time} - ${start_time}) / 60.0" | bc -ql 2>/dev/null`"
+  elps_time="`echo ${elps_time} | awk '{printf "%5.1f", $0}'`"
+  elps_time="`strTrim "${elps_time}" 2` min"
+  
+  echo "${msg}${elps_time}"
+}
+
+# -------------------------------------------------------
+# strESC()
+# Usage:      strESC inp_string
+# Parameters:
+#  inp_string   : the input string on which this function is applied
+#                 to escape special characters used in bash/sed ...
+# Returns :   none
+# Echoes  :   the modified string with its special characters escaped
+# Exports :   none
+#
+# strESC escapes special characters in a string: "'()/[]*
+# -------------------------------------------------------
+strESC()
+{
+  echo -n "$(echo "${*}" | sed -e "s/[\"\'\(\)\/\*\!]/\\\&/g;s/\[/\\\&/g;s/\]/\\\&/g")"
+}
+
+# -------------------------------------------------------
+# strRmDuplicate()
+# Usage:      strRmDuplicate inp_string
+# Parameters:
+#  inp_string   : the input string that can contain a list of substrings
+#                 separated by spaces, in which duplicate substrings
+#                 are removed without sorting the remaining entries
+# Returns :   none
+# Echoes  :   the modified string without duplicate substrings
+# Exports :   none
+#
+# strRmDuplicate removes duplicate substrings from inp_string
+# -------------------------------------------------------
+strRmDuplicate()
+{
+  local sep_str="${2:-[[:space:]]}"
+
+  echo -n "$( echo "${1}" | tr "${sep_str}" "\n" | \
+              awk '{if ($1 in a) next; a[$1]=$0; print}' | \
+              tr "\n" " " )"
+}
+
+# -------------------------------------------------------
+# strSort()
+# Usage:      strSort inp_string
+# Parameters:
+#  inp_string   : the input string that can contain a list of substrings
+#                 separated by spaces, in which duplicate substrings
+#                 are removed while sorting the remaining entries
+# Returns :   none
+# Echoes  :   the modified string without duplicate substrings
+# Exports :   none
+#
+# strSort removes duplicate substrings from inp_string and sorts
+#         the remaining entries
+# -------------------------------------------------------
+strSort()
+{
+  local sep_str="${2:-[[:space:]]}"
+
+  echo -n "$( echo "${1}" | tr "${sep_str}" "\n" | \
+              sort -u | tr "\n" " " )"
+}
+
+# -------------------------------------------------------
+# strstr()
+# Usage:      strstr s1 s2
+# Parameters: s1 s2 (strings)
+# Returns:    1 if s2 does not occur in s1
+#
+# Strstr echoes a substring starting at the first
+# occurrence of string s2 in string s1, or nothing
+# if s2 does not occur in the string. If s2 points
+# to a string of zero length, strstr echoes s1.
+# -------------------------------------------------------
+function strstr ()
+{
+  local -i retval=0
+  local first=
+
+# if s2 points to a string of zero length, strstr echoes s1
+  if [ ${#2} -eq 0 ]; then
+    echo -n "${1}"
+    return ${retval}
+  fi
+
+# strstr echoes nothing if s2 does not occur in s1
+  case "$1" in
+  *$2*) ;;
+     *) return ${retval};;
+  esac
+
+# use the pattern matching code to strip off the match and everything
+# following it
+  first=${1/$2*/}
+
+# then strip off the first unmatched portion of the string
+  echo -n "${1##$first}"
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# strTrim()
+# Usage:      strTrim s1 flag
+# Parameters: s1 (string), flag (integer)
+# Returns:    None
+#
+# strTrim echoes s1 with the leading and/or trailing
+# white spaces removed.
+#
+# flag: A value that controls the action of strTrim.
+#       If flag is zero or not present, trailing blanks are removed.
+#       Leading blanks are removed if it is equal to 1.
+#       Both are removed if it is equal to 2.
+#       In any other case, trailing blanks are removed.
+# -------------------------------------------------------
+function strTrim ()
+{
+  local -i trimFLG=0
+  local out_str=
+
+  trimFLG=$(String_getInteger "${2}" 0)
+
+  case ${trimFLG} in
+    0) out_str="$(echo "${1}" | sed 's/[ \t]*$//')" ;;
+    1) out_str="$(echo "${1}" | sed 's/^[ \t]*//')" ;;
+    2) out_str="$(echo "${1}" | sed 's/^[ \t]*//;s/[ \t]*$//')" ;;
+    *) out_str="$(echo "${1}" | sed 's/[ \t]*$//')" ;;
+  esac
+
+  echo -n "${out_str}"
+}
+
+# -------------------------------------------------------
+# checkSUBSTR()
+# Usage:      checkSUBSTR s1 s2
+# Parameters: s1 s2 (strings)
+# Returns:    1 if s2 does not occur in s1
+#               or any s1/s2is empty
+#             0 if s2 occurs in s1
+# -------------------------------------------------------
+function checkSUBSTR()
+{
+  [ $# -lt 2 ] && return 1
+
+  case "${1}" in
+    *"${2}"*) return 0 ;;
+           *) return 1 ;; # NO MATCH (error)
+  esac
+}
+
+# -------------------------------------------------------
+# toUPPER()
+# Usage:      toUPPER string
+# Parameters: string
+# Returns:    NONE
+# Echoes:     the input string in all upper case
+# -------------------------------------------------------
+function toUPPER()
+{
+  echo "${1}" | tr '[:lower:]' '[:upper:]'
+}
+
+# -------------------------------------------------------
+# toLOWER()
+# Usage:      toLOWER string
+# Parameters: string
+# Returns:    NONE
+# Echoes:     the input string in all lower case
+# -------------------------------------------------------
+function toLOWER()
+{
+  echo "${1}" | tr '[:upper:]' '[:lower:]'
+}
+
+# -------------------------------------------------------
+# ModifyAVar()
+# Usage:      ModifyAVar file_name var_name var_value
+# Parameters: file_name var_name var_value
+#             file_name: the filename to use
+#             var_name : the name of the variable to modify
+#             var_value: the new value of the variable
+# Returns:    NONE
+# Exports:    NONE
+# Echoes:     NONE
+#
+# Modifies the value of a variable in the input file.
+# -------------------------------------------------------
+ModifyAVar()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local fname vname vvalue
+  local xpr1 xpr2
+
+  if [ $# -lt 3 ]; then
+    procError "need to define the filename, the variable and its value to modify" \
+              "usage: ${nm_func} fname vname vvalue"
+  fi
+
+  if [ ! -f "${1}" ]; then
+    procError "need to define a valid filename" \
+              "usage: ${nm_func} fname vname vvalue"
+  fi
+
+  fname="${1}"
+  vname="`strESC "\`echo "${2}" | sed 's/[[:space:]]//g'\`"`"
+  vvalue="`echo "\`strESC "${3}"\`"`"
+
+  isNumber "${vvalue}"
+  if [ $? -ne 0 ]; then
+    if [ -n "${vvalue:+1}" ]; then
+      vvalue="\"${vvalue}\""
+    else
+      vvalue="${vvalue}"
+    fi
+  fi
+
+  xpr1="^[[:space:]]*${vname}[[:space:]]*=[[:space:]]*"
+  xpr2="${vvalue}"
+  sed -i "s/\(${xpr1}\)\(.*\)/\1${xpr2}/gi" ${fname}
+}
+############################################################
+
+
+############################################################
+##### FILE FUNCTIONS
+############################################################
+# -------------------------------------------------------
+# stripESCFILE()
+# Usage:      stripESCFILE file
+# Parameters: file (string)
+#
+# Returns :   none
+# Echoes  :   none
+# Exports :   none
+#
+# stripESCFILE deletes special characters in a file
+#              currently backspace, carriage return
+# -------------------------------------------------------
+stripESCFILE()
+{
+  checkFILE -r "${1}"
+  [ $? -ne 0 ] && return 0
+
+  sed -i -e 's/[\x08\r]//g' "${1}"
+}
+
+# -------------------------------------------------------
+# checkFILE()
+# Usage:      checkFILE [options] file
+# Parameters: file (string)
+# Returns:    1 if the options are not met or, no arguments
+#             were supplied or, the file is an empty string
+#             0 in any other case (success)
+# Echoes:     NONE
+#
+# Possible options are:
+# -h FILE exists and is a symbolic link (same as -L)
+# -L FILE exists and is a symbolic link (same as -h)
+# -r FILE exists and is readable
+# -s FILE exists and has a size greater than zero
+# -w FILE exists and is writable
+#
+# Checks if the file "file" is a valid file
+# based on the options supplied. If no options supplied
+# it simply checks that if "file" is a a regular file
+# -------------------------------------------------------
+checkFILE()
+{
+  local -i retval=0
+  local get_opts my_arg="" chk_my_arg="" my_opts="-f" iopt
+# Use these to reset the options since the shell does not
+# do that automatically
+  local opt_id=${OPTIND} opt_arg="${OPTARG}"
+
+  [ $# -eq 0 ] && { retval=1; return ${retval}; }
+
+  while getopts ":hLrsw" get_opts
+  do
+    case ${get_opts} in
+      h|L) my_opts="${my_opts} -h";;
+        r) my_opts="${my_opts} -r";;
+        s) my_opts="${my_opts} -s";;
+        w) my_opts="${my_opts} -w";;
+        *) ;; # DEFAULT
+    esac
+  done
+
+# Get the first argument after the options
+  shift $(( ${OPTIND} - 1))
+  my_arg=${1}
+
+# Reset the option variables since the shell doesn't do it
+  OPTIND=${opt_id}
+  OPTARG="${opt_arg}"
+
+  chk_my_arg="`echo "${my_arg##*/}" | sed -e 's/[ \t]//g'`"
+  [ "X${my_arg}" = "X" ] && { retval=1; return ${retval}; }
+
+  for iopt in ${my_opts}
+  do
+    [ ! ${iopt} "${my_arg}" ] && { retval=1; return ${retval}; }
+  done
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# checkDIR()
+# Usage:      checkDIR [options] dir
+# Parameters: dir (string)
+# Returns:    1 if the options are not met or, no arguments
+#             were supplied or, the dir is an empty string
+#             0 in any other case (success)
+# Echoes:     NONE
+#
+# Possible options are:
+# -h FILE exists and is a symbolic link (same as -L)
+# -L FILE exists and is a symbolic link (same as -h)
+# -r FILE exists and is readable
+# -x FILE exists and is executable
+# -w FILE exists and is writable
+#
+# Checks if the directory "dir" is a valid directory
+# based on the options supplied. If no options supplied
+# it simply checks that if "dir" is a directory
+# -------------------------------------------------------
+checkDIR()
+{
+  local -i retval=0
+  local get_opts my_arg="" chk_my_arg="" my_opts="-d" iopt
+# Use these to reset the options since the shell does not
+# do that automatically
+  local opt_id=${OPTIND} opt_arg="${OPTARG}"
+
+  [ $# -eq 0 ] && { retval=1; return ${retval}; }
+
+  while getopts ":hLrxw" get_opts
+  do
+    case ${get_opts} in
+      h|L) my_opts="${my_opts} -h";;
+        r) my_opts="${my_opts} -r";;
+        x) my_opts="${my_opts} -x";;
+        w) my_opts="${my_opts} -w";;
+        *) ;; # DEFAULT
+    esac
+  done
+
+# Get the first argument after the options
+  shift $(( ${OPTIND} - 1))
+  my_arg=${1}
+
+# Reset the option variables since the shell doesn't do it
+  OPTIND=${opt_id}
+  OPTARG="${opt_arg}"
+
+  chk_my_arg="`echo "${my_arg##*/}" | sed -e 's/[ \t]//g'`"
+  [ "X${my_arg}" = "X" ] && { retval=1; return ${retval}; }
+
+  for iopt in ${my_opts}
+  do
+    [ ! ${iopt} "${my_arg}" ] && { retval=1; return ${retval}; }
+  done
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# checkPROG()
+# Usage:      checkPROG [options] program
+# Parameters: program (string)
+# Returns:    1 if the options are not met or, no arguments
+#             were supplied or, the program is an empty string
+#             0 in any other case (success)
+# Echoes:     NONE
+#
+# Possible options are:
+# -h FILE exists and is a symbolic link (same as -L)
+# -L FILE exists and is a symbolic link (same as -h)
+# -r FILE exists and is readable
+# -s FILE exists and has a size greater than zero
+#
+# Checks if the program "program" is a valid executable
+# program based on the options supplied. If no options
+# supplied it simply checks that if "program" is an
+# executable program
+# -------------------------------------------------------
+checkPROG()
+{
+  local -i retval=0
+  local get_opts my_arg="" chk_my_arg="" my_opts="-f -x" iopt
+# Use these to reset the options since the shell does not
+# do that automatically
+  local opt_id=${OPTIND} opt_arg="${OPTARG}"
+
+  [ $# -eq 0 ] && { retval=1; return ${retval}; }
+
+  while getopts ":hLrs" get_opts
+  do
+    case ${get_opts} in
+      h|L) my_opts="${my_opts} -h";;
+        r) my_opts="${my_opts} -r";;
+        s) my_opts="${my_opts} -s";;
+        *) ;; # DEFAULT
+    esac
+  done
+
+# Get the first argument after the options
+  shift $(( ${OPTIND} - 1))
+  my_arg=${1}
+
+# Reset the option variables since the shell doesn't do it
+  OPTIND=${opt_id}
+  OPTARG="${opt_arg}"
+
+  chk_my_arg="`echo "${my_arg##*/}" | sed -e 's/[ \t]//g'`"
+  [ "X${chk_my_arg}" = "X" ] && { retval=1; return ${retval}; }
+
+  for iopt in ${my_opts}
+  do
+    [ ! ${iopt} ${my_arg} ] && { retval=1; return ${retval}; }
+  done
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# makeDIR()
+# Usage:      makeDIR FunctionName DirName
+# Parameters: FunctionName (string), the name of the calling function (optional)
+# Parameters: DirName (string), the directory to create
+# Returns:    1 on failure (eg., argument list is empty)
+#             0 on success
+# Echoes:     NONE
+#
+# Creates the directory "DirName" if it doesn't exist,
+# if the directory exists it checks if it is readable.
+# On failure this function issues: exit 1
+# -------------------------------------------------------
+makeDIR()
+{
+  local -i retval=0
+  local my_dir=
+
+  [ $# -eq 0 ] && { retval=1; return ${retval}; }
+
+  my_dir="${1}"
+
+  if ! `checkDIR "${my_dir}"` ; then
+    mkdir -p "${my_dir}" >/dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      procError "failed to create the directory: ${my_dir:-UNDEF}"
+    else
+      procWarn "created the empty directory: ${my_dir:-UNDEF}"
+    fi
+  fi
+
+  if ! `checkDIR -rwx "${my_dir}"` ; then
+    procError "directory exists but read/write/execute permissions are not valid" \
+              "  Directory = ${my_dir:-UNDEF}"
+  fi
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# deleteDIR()
+# Usage:      deleteDIR FunctionName DirName
+# Parameters: FunctionName (string), the name of the calling function (optional)
+# Parameters: DirName (string), the directory to delete
+# Returns:    1 on failure (eg., argument list is empty)
+#             0 on success
+# Echoes:     NONE
+#
+# Deletes the directory "DirName" if it exists,
+# if the directory exists it checks if it is readable.
+# On failure this function issues: exit 1
+# -------------------------------------------------------
+deleteDIR()
+{
+  local -i retval=0
+  local my_dir
+  local not_dirs=":/:${HOME}:${PATH}:.:"
+
+  [ $# -eq 0 ] && { retval=1; return ${retval}; }
+
+  my_dir="${1}"
+
+  [[ :${not_dirs}: == *:${my_dir}:* ]] && { retval=1; return ${retval}; }
+  
+  [ $(id -u) -eq 0 ] && { retval=1; return ${retval}; }
+
+  if `checkDIR -rwx "${my_dir}"` ; then
+    rm -rf "${my_dir}" >/dev/null 2>&1
+    if [ $? -ne 0 ]; then
+      procError "failed to delete the directory: ${my_dir:-UNDEF}"
+    else
+      procWarn "deleted the directory: ${my_dir:-UNDEF}"
+    fi
+  fi
+
+  return ${retval}
+}
+
+MakeDeleteDirs()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local mydirs= idir=
+
+  if [ $# -lt 1 ]; then
+    procError "wrong number of arguments" \
+              "usage: ${nm_func} \"dirs\""
+  fi
+
+  mydirs="${1}"
+  for idir in ${mydirs}
+  do
+    deleteDIR "${idir}"
+    makeDIR "${idir}"
+  done
+
+  return 0
+}
+
+# -------------------------------------------------------
+# searchFILE()
+# Usage:      searchFILE inp_fname inp_dirs
+# Parameters:
+#   inp_fname   : the list of input file expressions to search for, STRING
+#   inp_dirs    : the list of directories to search in, STRING
+#                 default="."
+# Returns :   the status of search, 0 = success
+# Echoes  :   none
+# Exports :   the full path of the file(s) found or empty string, STRING
+#
+# searchFILE searches for all file(s) with the supplied filename expressions
+# in the list of supplied directories. The files should be readable by the
+# current user.
+# -------------------------------------------------------
+searchFILE()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local -i retval=1
+  local exprLIST dirLIST idir iexpr
+  local tmpLIST tmpNAMES ifile
+
+  unset foundFilePath
+
+  if [ $# -lt 1 ]; then
+    procError "wrong number of arguments" \
+              "usage: ${nm_func} filename_expr [dirs to search]"
+  fi
+
+  exprLIST="${1}"
+  dirLIST="${2:-.}"
+
+  for idir in ${dirLIST}
+  do
+    tmpLIST=
+    for iexpr in ${exprLIST}
+    do
+      tmpLIST="${tmpLIST} $( ls "${idir}" 2>/dev/null | egrep "^${iexpr}$" )"
+    done
+
+    if [ -n "${tmpLIST:+1}" ]; then
+      tmpLIST="$( strRmDuplicate "${tmpLIST}" )"
+
+      for ifile in ${tmpLIST}
+      do
+        ifile="${idir}/${ifile}"
+        checkFILE -r "${ifile}"
+        [ $? -eq 0 ] && tmpNAMES="${tmpNAMES} ${ifile}"
+      done
+    fi
+  done
+
+  export foundFilePath="$( strTrim "${tmpNAMES}" 2 )"
+  [ -n "${foundFilePath:+1}" ] && retval=0
+  
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# linkFILE()
+# Usage:      linkFILE inp_fname inp_dirs message
+# Parameters:
+#   file1   : the name of the file to link against
+#   file2   : the name of the link
+#
+# Returns :   0 (success), or >0 (failure)
+# Echoes  :   none
+# Exports :   none
+#
+# linkFILE makes a link to a file
+# -------------------------------------------------------
+linkFILE()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local -i retval=0
+  local file1 file2
+
+  if [ $# -lt 2 ]; then
+    procError "wrong number of arguments" \
+              "usage: ${nm_func} filename1 filename2"
+  fi
+
+  file1="${1}"
+  file2="${2}"
+
+  if [ "X${file1}" != "X${file2}" ]; then
+    [ -f ${file2} ] && rm -f ${file2} 2>&1 > /dev/null
+    [ ! -e ${file2} ] && ln -sf ${file1} ${file2} 2>&1 > /dev/null
+    retval=$?
+  fi
+
+  return ${retval}
+}
+############################################################
+
+
+############################################################
+##### NUMBER FUNCTIONS
+############################################################
+# -------------------------------------------------------
+# isNumber()
+# Usage:      isNumber var
+# Parameters: var
+# Returns:    1 if var is not a number
+#             0 in any other case
+# Echoes:     NONE
+# -------------------------------------------------------
+isNumber ()
+{
+  local -i retval=0
+
+  [ $# -eq 0 ] && { retval=1; return ${retval}; }
+
+  if ! [[ "$1" =~ ^[-+]?[0-9]+([.][0-9]+)?$ ]] ; then
+     retval=1
+  else
+     retval=0
+  fi
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# isInteger()
+# Usage:      isInteger var
+# Parameters: var
+# Returns:    1 if var is not an integer (0 is an integer as well)
+#             0 in any other case
+# Echoes:     NONE
+# -------------------------------------------------------
+isInteger()
+{
+  local -i num retval=0
+
+  [ $# -eq 0 ] && return 1
+
+  if [ "${1}" -eq "${1}" ] 2>/dev/null
+  then
+    retval=0
+  else
+    retval=1
+  fi
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# isLogical()
+# Usage:      isLogical var
+# Parameters: var
+# Returns:    1 if var is not "true" or "false"
+#             0 in any other case
+# Echoes:     NONE
+# -------------------------------------------------------
+isLogical ()
+{
+  local -i retval=0
+  local my_var
+
+  [ $# -eq 0 ] && { retval=1; return ${retval}; }
+
+  my_var="`echo -e "${1}" | tr '[:lower:]' '[:upper:]'`"
+
+  if [ "${my_var}" != ".TRUE." -a "${my_var}" != ".FALSE." ] ; then
+     retval=1
+  else
+     retval=0
+  fi
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# getInteger()
+# Usage:      getInteger int
+# Parameters: int (int >=0 or, int < 0)
+# Returns:    1 if var is not an integer
+#             0 in any other case
+# Echoes:     int, if it is a valid integer (including 0),
+#             in any other case echoes an empty string
+# -------------------------------------------------------
+getInteger()
+{
+  local -i retval=0
+  local echoval= minus=
+
+  # strip spaces, '+' signs and '-' signs
+  # if the first character of the string is '-', set the minus variable
+  echoval="`echo "${1}" | sed 's/[ \t+]//g'`"
+  [ "X`echo "${echoval:0:1}"`" = "X-" ] && minus="-"
+  echoval="${minus}`echo "${echoval}" | sed 's/[ \t-]//g'`"
+
+  if isInteger ${echoval}; then
+    echoval="$(echo "scale=0; ${echoval}" | bc -ql 2>/dev/null)"
+    retval=$?
+    echoval="${echoval:-0}"
+  else
+    echoval=
+    retval=1
+  fi
+
+  echo -n "${echoval}"
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# getPosInteger()
+# Usage:      getPosInteger posint
+# Parameters: posint (posint >= 0)
+# Returns:    1 if var is not a positive integer
+#             0 in any other case
+# Echoes:     posint if it is a valid positive integer
+#             (including 0), in any other case echoes an
+#             empty string
+# -------------------------------------------------------
+getPosInteger()
+{
+  local -i retval=0
+  local echoval=
+
+  echoval=$( getInteger "${1}" )
+  retval=$?
+
+  if [ ${retval} -ne 0 ] ; then
+    echoval=
+    retval=1
+  else
+    if [ ${echoval} -lt 0 ]; then
+      echoval=
+      retval=1
+    fi
+  fi
+
+  echo -n ${echoval}
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# getNegInteger()
+# Usage:      getNegInteger negint
+# Parameters: negint (negint < 0)
+# Returns:    1 if var is not a negative integer
+#             0 in any other case
+# Echoes:     negint if it is a valid negative integer,
+#             in any other case echoes an empty string
+# -------------------------------------------------------
+getNegInteger()
+{
+  local -i retval=0
+  local echoval=
+
+  echoval=$( getInteger "${1}" )
+  retval=$?
+
+  if [ ${retval} -ne 0 ] ; then
+    echoval=
+    retval=1
+  else
+    if [ ${echoval} -ge 0 ]; then
+      echoval=
+      retval=1
+    fi
+  fi
+
+  echo -n ${echoval}
+
+  return ${retval}
+}
+
+min()
+{
+  local i myVAL= myLIST= chkLIST="$@"
+
+  for i in ${chkLIST}
+  do
+    if `isNumber "${i}"`; then
+      if [ -z "${myLIST}" ]; then
+        myLIST="${i}"
+      else
+        myLIST="${myLIST} ${i}"
+      fi
+    fi
+  done
+
+  if [ -n "${myLIST:+1}" ]; then
+    myVAL="$( echo "${myLIST}" | tr [:blank:] "\n" | \
+              awk '{ if(val==""){val=$1}; if($1<val){val=$1} } END \
+                   {print val}' )"
+  fi
+
+  echo -n "${myVAL}"
+}
+
+min1()
+{
+  local -i i myVAL=9999999999
+  local array=
+
+  array=( $(echo "$@") )
+
+  for ((i = 0; i < ${#array[@]}; i++))
+  do
+    if [ ${array[${i}]} -le ${myVAL} ]; then
+      myVAL=${array[${i}]}
+    fi
+  done
+
+  echo -n ${myVAL}
+}
+
+max()
+{
+  local i myVAL= myLIST= chkLIST="$@"
+
+  for i in ${chkLIST}
+  do
+    if `isNumber "${i}"`; then
+      if [ -z "${myLIST}" ]; then
+        myLIST="${i}"
+      else
+        myLIST="${myLIST} ${i}"
+      fi
+    fi
+  done
+
+  if [ -n "${myLIST:+1}" ]; then
+    myVAL="$( echo "${myLIST}" | tr [:blank:] "\n" | \
+              awk '{ if(val==""){val=$1}; if($1>val){val=$1} } END \
+                   {print val}' )"
+  fi
+
+  echo -n "${myVAL}"
+}
+
+max1()
+{
+  local -i i myVAL=-9999999999
+  local array=
+
+  array=( $(echo "$@") )
+
+  for ((i = 0; i < ${#array[@]}; i++))
+  do
+    if [ ${array[${i}]} -ge ${myVAL} ]; then
+      myVAL=${array[${i}]}
+    fi
+  done
+
+  echo -n ${myVAL}
+}
+############################################################
+
+
+############################################################
+##### YEAR/DAY FUNCTIONS
+############################################################
+# -------------------------------------------------------
+# getYearDays()
+# Usage:      getYearDays year
+# Parameters: year (year >= 0)
+# Returns:    NONE
+# Echoes:     the number of the days in the year (365/366)
+#             if year is not a valid positive integer
+#             (including 0) echoes an empty string
+# -------------------------------------------------------
+getYearDays()
+{
+  local -i retval=0
+  local echoval=
+
+  if [ "X`getPosInteger ${1}`" != "X" ]; then
+    echoval=`expr 365`
+    if [ `expr ${1} % 4` = 0 ]  &&
+       [ `expr ${1} % 100` != 0 ] ||
+       [ `expr ${1} % 400` = 0 ] ; then
+         echoval=`expr 366`
+    fi
+  else
+    retval=1
+  fi
+
+  echo -n ${echoval}
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# getMonthDays()
+# Usage:      getMonthDays year month
+# Parameters: year (year >= 0)
+#             month (1 <= month <= 12)
+# Returns:    NONE
+# Echoes:     the number of the days in the month of the year
+#             if year is not a valid positive integer
+#             (including 0) echoes an empty string
+# -------------------------------------------------------
+getMonthDays()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local -i retval=0 yrDAYS=0 myMO=0
+  local echoval=
+
+  if [ $# -lt 2 ]; then
+    procError "need to define the year and the month" \
+              "usage: ${nm_func} year month"
+  fi
+
+  yrDAYS="`getYearDays ${1}`"
+  if [ $? -ne 0 ]; then
+    procError "wrong year"
+  fi
+
+  myMO="`getPosInteger ${2}`"
+    [ -z "${myMO}" ] && myMO=0
+  [ ${myMO} -lt 1 -o ${myMO} -gt 12 ] && myMO=0
+
+  case ${myMO} in
+     1) echoval=31 ;;
+     2) echoval=28
+        [ ${yrDAYS} -eq 366 ] && echoval=29
+        ;;
+     3) echoval=31 ;;
+     4) echoval=30 ;;
+     5) echoval=31 ;;
+     6) echoval=30 ;;
+     7) echoval=31 ;;
+     8) echoval=31 ;;
+     9) echoval=30 ;;
+    10) echoval=31 ;;
+    11) echoval=30 ;;
+    12) echoval=31 ;;
+     *) procError "wrong month" ;;
+  esac
+
+  echo -n ${echoval}
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# getYearString()
+# Usage:      getYearString year
+# Parameters: year (9999 >= year >= 0)
+# Returns:    NONE
+# Echoes:     the zero padded string of the year that is,
+#             0001, 0015, 0232, 1325, ...
+#             if year is not a valid positive integer
+#             echoes an empty string
+# -------------------------------------------------------
+getYearString()
+{
+  local -i retval=0
+  local echoval=
+
+  if [ "X`getPosInteger ${1}`" != "X" ]; then
+    [ ${1} -lt 10   ]                       && echoval="000${1}"
+    [ ${1} -ge 10   ] && [ ${1} -lt 100   ] && echoval="00${1}"
+    [ ${1} -ge 100  ] && [ ${1} -lt 1000  ] && echoval="0${1}"
+    [ ${1} -ge 1000 ] && [ ${1} -lt 10000 ] && echoval="${1}"
+  else
+    retval=1
+  fi
+
+  echo -n ${echoval}
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# getDayString()
+# Usage:      getDayString day
+# Parameters: day (366 >= day >= 0)
+# Returns:    NONE
+# Echoes:     the zero padded string of the day that is,
+#             001, 015, 232, ...
+#             if day is not a valid positive integer
+#             echoes an empty string
+# -------------------------------------------------------
+getDayString()
+{
+  local -i retval=0
+  local echoval=
+
+  if [ "X`getPosInteger ${1}`" != "X" ]; then
+    [ ${1} -lt 10  ]                     && echoval="00${1}"
+    [ ${1} -ge 10  ] && [ ${1} -lt 100 ] && echoval="0${1}"
+    [ ${1} -ge 100 ] && [ ${1} -le 366 ] && echoval="${1}"
+  else
+    retval=1
+  fi
+
+  echo -n ${echoval}
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# getHourString()
+# Usage:      getHourString hour
+# Parameters: hour (23 >= hour >= 0)
+# Returns:    NONE
+# Echoes:     the zero padded string of the hour that is,
+#             00, 09, 12, ...
+#             if hour is not a valid positive integer
+#             (including 0) echoes an empty string
+# -------------------------------------------------------
+getHourString()
+{
+  local -i retval=0
+  local echoval=
+
+  if [ "X`getPosInteger ${1}`" != "X" ]; then
+    [ ${1} -lt 10 ] && echoval="0${1}"
+    [ ${1} -ge 10 ] && [ ${1} -le 24  ] && echoval="${1}"
+  else
+    retval=1
+  fi
+
+  echo -n ${echoval}
+
+  return ${retval}
+}
+############################################################
+
+
+############################################################
+##### STRING FUNCTIONS
+############################################################
+# -------------------------------------------------------
+# get2DString()
+# Usage:      get2DString number (integer)
+# Parameters: number (99 >= number >= 0)
+# Returns:    NONE
+# Echoes:     the zero padded string of the number that is,
+#             00, 09, 12, ...
+#             if number is not a valid positive integer
+#             (including 0) echoes an empty string
+# -------------------------------------------------------
+get2DString()
+{
+  local -i retval=0
+  local echoval=
+
+  if [ "X`getPosInteger ${1}`" != "X" ]; then
+    [ ${1} -lt 10 ] && echoval="0${1}"
+    [ ${1} -ge 10 ] && [ ${1} -le 99 ] && echoval="${1}"
+  else
+    retval=1
+  fi
+
+  echo -n ${echoval}
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# get3DString()
+# Usage:      get3DString number (integer)
+# Parameters: number (999 >= number >= 0)
+# Returns:    NONE
+# Echoes:     the zero padded string of the number that is,
+#             000, 009, 012, ...
+#             if number is not a valid positive integer
+#             (including 0) echoes an empty string
+# -------------------------------------------------------
+get3DString()
+{
+  local -i retval=0
+  local echoval=
+
+  if [ "X`getPosInteger ${1}`" != "X" ]; then
+    [ ${1} -lt  10 ] && echoval="00${1}"
+    [ ${1} -ge  10 ] && [ ${1} -le  99 ] && echoval="0${1}"
+    [ ${1} -ge 100 ] && [ ${1} -le 999 ] && echoval="${1}"
+  else
+    retval=1
+  fi
+
+  echo -n ${echoval}
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# get4DString()
+# Usage:      get4DString number (integer)
+# Parameters: number (9999 >= number >= 0)
+# Returns:    NONE
+# Echoes:     the zero padded string of the number that is,
+#             0000, 0009, 0012, ...
+#             if number is not a valid positive integer
+#             (including 0) echoes an empty string
+# -------------------------------------------------------
+get4DString()
+{
+  local -i retval=0
+  local echoval=
+
+  if [ "X`getPosInteger ${1}`" != "X" ]; then
+    [ ${1} -lt  10  ] && echoval="000${1}"
+    [ ${1} -ge  10  ] && [ ${1} -le  99  ] && echoval="00${1}"
+    [ ${1} -ge 100  ] && [ ${1} -le 999  ] && echoval="0${1}"
+    [ ${1} -ge 1000 ] && [ ${1} -le 9999 ] && echoval="${1}"
+  else
+    retval=1
+  fi
+
+  echo -n ${echoval}
+
+  return ${retval}
+}
+
+String_FormDbl()
+{
+  local -i retval=0
+  local in_str def_val out_str
+
+  in_str="${1}"
+  def_val="${2}"
+  out_str=
+
+  if [ -n "${def_val:+1}" ]; then
+    def_val="$(echo "${def_val}" | awk '{print $1}')d0"
+  fi
+
+  if [ -n "${in_str:+1}" ]; then
+    out_str="$(echo "${in_str}" | awk '{print $1}')"
+    [ "X`strstr "${out_str}" "\."`" = "X" ] && \
+      out_str="$(echo "${out_str}" | awk '{printf "%.1f", $1}')"
+    out_str="$(echo ${out_str})d0"
+  fi
+
+  [ -z "${out_str}" ] && out_str="${def_val}"
+
+  echo -n "${out_str}"
+}
+
+String_getInteger()
+{
+  local -i retval=0
+  local in_str def_val out_str
+
+  in_str="${1}"
+  def_val="${2}"
+  out_str=
+
+  if [ -n "${def_val:+1}" ]; then
+    def_val="$(echo "${def_val}" | awk '{print $1}')"
+    def_val="$(getInteger "${def_val}")"
+  fi
+
+  if [ -n "${in_str:+1}" ]; then
+    out_str="$(echo ${in_str} | awk '{print $1}')"
+    out_str="$(getInteger "${out_str}")"
+  fi
+
+  [ -z "${out_str}" ] && out_str="${def_val}"
+
+  echo -n "${out_str}"
+}
+
+# -------------------------------------------------------
+# Make_BlockText()
+# Usage:      Make_BlockText inp_fname var_name var_vals var_vals_per_line
+# Parameters:
+#   inp_fname         : the input file to search for the
+#                       variable "var_name", STRING
+#   var_name          : the variable name to search for, STRING
+#   var_vals          : the value(s) of the variable to be set,
+#                       separated by spaces, STRING
+#   var_vals_per_line : the number of values to be written in
+#                       each line of the output, POSITIVE INTEGER
+#   eqsigns           : the number of equal signs to be used for
+#                       the variable, POSITIVE INTEGER
+#                       var_name = var_vals, OR
+#                       var_name == var_vals
+# Returns:    1 if error
+# Echoes :    the multi-line string that contains the block text
+#             that defines the variable to be set
+#
+# Make_BlockText creates the block text to be used in 
+# function "Put_BlockText".
+# -------------------------------------------------------
+Make_BlockText()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local -i retval=0 ival imod vals_perline eqsigns
+  local inp_file
+  local in_var in_vals eq_var
+  local bl_var bl_var_blank
+  local tmp_file=tmp_block_text_file.tmp
+
+  if [ $# -lt 3 ]; then
+    procError "wrong number of arguments" \
+              "usage: ${nm_func} filename varname varvalues [values per line]"
+  fi
+
+  inp_file="${1}"
+  in_var="${2}"
+  in_vals=( ${3} )
+  vals_perline=$(( ${4:-1} + 0 ))
+    [ ${vals_perline} -le 0 ] && vals_perline=1
+  eqsigns=$(( ${5:-2} + 0 ))
+    [ ${eqsigns} -le 1 ] && eq_var="="
+    [ ${eqsigns} -ge 2 ] && eq_var="=="
+
+  retval=$?
+
+  if ! `checkFILE -r "${inp_file}"`; then
+    procError "could not locate the input file:" \
+              "file = ${inp_file}"
+  fi
+
+  bl_var="`echo "${in_var}" | sed -e 's/[()]/\\\&/g'`"
+  bl_var="`grep -Ei -m 1 "^[[:space:]]*${bl_var}[[:space:]]*=" "${inp_file}" 2>&1`"
+  bl_var="`echo "${bl_var}" | sed -e 's/\!.*//g' | sed -e "s/\(.*${in_var}\).*/\1/"`"
+  bl_var="`echo "${bl_var}"` ${eq_var}"
+  bl_var_blank="`echo "${bl_var}" | sed -e 's/./ /g'`"
+  retval=$?
+
+  [ -f ${tmp_file} ] && rm -f ${tmp_file}
+
+  for ((ival = 0; ival < ${#in_vals[@]}; ival++))
+  do
+    imod=$(( ${ival} % ${vals_perline} ))
+    if [ ${ival} -ne 0 -a ${imod} -eq 0 ]; then
+      echo -n " \\"              >> ${tmp_file}
+      echo                       >> ${tmp_file}
+      echo -n "${bl_var_blank}"  >> ${tmp_file}
+    fi
+    if [ ${ival} -eq 0 ]; then
+      echo -n "${bl_var}"        >> ${tmp_file}
+    fi
+    echo -n " ${in_vals[$ival]}" >> ${tmp_file}
+    if [ ${ival} -eq $(( ${#in_vals[@]} - 1 )) ]; then
+      echo                       >> ${tmp_file}
+    fi
+  done
+
+  echo -n "$( cat ${tmp_file} )"
+  retval=$?
+
+  [ -f ${tmp_file} ] && rm -f ${tmp_file}
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# Get_BlockText()
+# Usage:      Get_BlockText inp_fname var_name
+# Parameters:
+#   inp_fname         : the input file to search for the
+#                       variable "var_name", STRING
+#   var_name          : the variable name to search for, STRING
+# Returns:    1 if error
+#
+# Get_BlockText exports the multi-line text starting
+# the first line that contains the string "var_name"
+# and ending at a blank line or at the line that does not
+# contain the continuation character "\".
+# The following global variables are set:
+#   bl_first      : contains the first line of the block text
+#   bl_first_nline: contains the line number in the input file
+#                   of the first line of the block text
+#   bl_text       : contains the text of consecutive lines
+#                   in the block
+#   bl_nlines     : contains the total number of lines
+#                   in the block text
+# -------------------------------------------------------
+Get_BlockText()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local -i retval=0
+  local inp_file= in_var=
+
+  unset bl_first bl_text bl_first_nline bl_nlines
+
+  if [ $# -lt 2 ]; then
+    bl_text=""
+    bl_first=""
+    bl_first_nline=-1
+    bl_nlines=-1
+    export bl_first bl_text bl_first_nline bl_nlines
+    return 1
+  fi
+
+  inp_file="${1}"
+  in_var="^[ \t]*`echo "${2}" | sed -e 's/[()]/\\\&/g'`[ \t]*="
+
+  if ! `checkFILE -r "${inp_file}"`; then
+    procError "could not locate the input file: ${inp_file}"
+  fi
+
+  bl_first="`grep -Ei "${in_var}" "${inp_file}"`"
+  bl_first_nline="`grep -nEi "${in_var}" "${inp_file}"`"
+  bl_first_nline="`echo "${bl_first_nline}" | sed 's/:/ /g' | awk '{print $1}'`"
+  bl_first_nline=$(( ${bl_first_nline} + 0 ))
+
+  bl_nlines=0
+  if [ -n "${bl_first:+1}" ]; then
+    bl_text="cat ${inp_file} | awk 'BEGIN{IGNORECASE=1} /${in_var}/,/^$/ || /^[^\\\]*$/'"
+    bl_text="$( eval ${bl_text} )"
+    bl_nlines="$( echo "${bl_text}" | wc -l )"
+  fi
+
+  export bl_first bl_text bl_first_nline bl_nlines
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# Put_BlockText()
+# Usage:      Put_BlockText inp_fname var_name rep_text
+# Parameters:
+#   inp_fname         : the input file to search for the
+#                       variable "var_name", STRING
+#   var_name          : the variable name to search for, STRING
+#   rep_text          : the text to replace the "var_name" text
+#                       in "inp_fname", STRING
+
+# Returns:    1 if error
+#
+# Put_BlockText creates the modified input file, where
+# the block text that defines the variable "var_name"
+# is replaced by the block text in "rep_text".
+# -------------------------------------------------------
+Put_BlockText()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local -i retval=0 inp_file_lines=0 nl=0
+  local in_var rep_text inp_file
+  local tmp_inp_txtfile="tmp_inp_text_file.tmp"
+  local tmp_rep_txtfile="tmp_rep_text_file.tmp"
+  local tmp_inp_file="tmp_inp_file.tmp"
+  local tmp_head_file="tmp_head_file.tmp"
+  local tmp_tail_file="tmp_tail_file.tmp"
+
+  if [ $# -lt 3 ]; then
+    procError "wrong number of arguments" \
+              "usage: ${nm_func} filename search_string replacement_text"
+  fi
+
+  inp_file="${1}"
+  in_var="${2}"
+  rep_text="${3}"
+
+  if ! `checkFILE -r "${inp_file}"`; then
+    procError "could not locate the input file: ${inp_file}"
+  fi
+
+  Get_BlockText "${inp_file}" "${in_var}"
+  retval="$?"
+
+  if [ "${bl_first_nline}" -le 0 -o "${bl_nlines}" -le 0 ]; then
+    unset bl_first bl_text bl_first_nline bl_nlines
+    return 1
+  fi
+
+  inp_file_lines=$( cat "${inp_file}" | wc -l )
+  if [ "${inp_file_lines}" -lt "${bl_nlines}" ]; then
+    unset bl_first bl_text bl_first_nline bl_nlines
+    return 1
+  fi
+
+  echo "${bl_text}"  > ${tmp_inp_txtfile}
+
+  echo "${rep_text}" > ${tmp_rep_txtfile}
+
+    nl=$(( ${bl_first_nline} - 1 ))
+  head -n ${nl} "${inp_file}" > ${tmp_head_file}
+  retval="$?"
+
+    nl=$(( ${inp_file_lines} - ${bl_first_nline} - ${bl_nlines} + 1 ))
+  tail -n ${nl} "${inp_file}" > ${tmp_tail_file}
+  retval="$?"
+
+  cat ${tmp_head_file} ${tmp_rep_txtfile} ${tmp_tail_file} > ${tmp_inp_file}
+  retval="$?"
+
+  rm -f ${tmp_inp_txtfile} ${tmp_rep_txtfile}
+  rm -f ${tmp_head_file} ${tmp_tail_file}
+  unset bl_first bl_text bl_first_nline bl_nlines
+
+  if [ ${retval} -eq 0 ]; then
+    rm -f "${inp_file}"
+    mv -f "${tmp_inp_file}" "${inp_file}"
+  fi
+
+  return ${retval}
+}
+############################################################
+
+
+############################################################
+##### DATE FUNCTIONS
+############################################################
+getDate()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local opt_opt opt_arg
+  local out_date my_DATE my_FMT my_TZ=UTC
+  local status=0
+
+  while test $# -gt 0; do
+    case "${1}" in
+      --*=*)
+        opt_opt="`toLOWER "\`echo "${1}" | sed 's/=.*//'\`"`"
+        opt_arg="`echo "${1}" | sed 's/.*=//'`"
+        ;;
+      *)
+        opt_opt="`toLOWER "${1}"`"
+        opt_arg="${opt_opt}"
+        ;;
+    esac
+
+    case "${opt_opt}" in
+      --date)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_DATE="${opt_arg}"
+          fi
+        ;;
+      --fmt)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_FMT="${opt_arg}"
+            my_FMT="$(echo "${my_FMT}" | sed 's/^[ \t]*//')"
+            [ "${my_FMT:0:1}" != "+" ] && my_FMT="+${my_FMT}"
+          fi
+        ;;
+      --tz)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_TZ="${opt_arg}"
+          fi
+        ;;
+      *) ;; # DEFAULT
+    esac
+    shift
+  done
+
+  export TZ="${my_TZ}"
+    if [ -n "${my_FMT}" ]; then
+      out_date="$( date -d "${my_DATE}" "${my_FMT}" 2>/dev/null )"
+      status=$?
+    else
+      out_date="$( date -d "${my_DATE}" 2>/dev/null )"
+      status=$?
+    fi
+  unset TZ
+
+  echo -n "${out_date}"
+  
+  return ${status}
+}
+
+# -------------------------------------------------------
+# getDateExpr()
+# Usage:      getDateExpr "date string"
+# Parameters: date_format
+#               one of the strings: YMDH YMD MDYH MDY DMYH DMY YJH YJ
+#             Y M D H (in the sequence defined above)
+# Examples:   getDateExpr YMDH YEAR MONTH DAY HOUR
+#             getDateExpr YMDH YEAR MONTH DAY [HOUR]
+#             getDateExpr DMYH YEAR MONTH DAY HOUR
+#             getDateExpr YJH  YEAR MONTH DAY HOUR
+#             If hour is not supplied it is neglected from
+#             the regular expression
+# Returns:    0 (upon success), otherwise an error code
+# Echoes:     The regular expresstion for the date string
+# -------------------------------------------------------
+getDateExpr()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local date_format out_format
+  local my_yr=-1 my_mo=-1 my_da=-1 my_yd=-1 my_hr=-1 my_mn=0 my_sc=0
+  local my_date my_expr
+  
+  local -i my_date_status=1
+  
+  my_expr="[.:_-]"
+
+  if [ $# -lt 1 ]; then
+    procError "need to supply a date format" \
+              "usage: ${nm_func} date_format [YEAR, MONTH, DAY, HOUR]" \
+              "date format one of: YMDH YMD YM MDYH MDY DMYH DMY YJH YJ"
+  fi
+
+  date_format=$( toUPPER "${1}" )
+  case "${date_format}" in
+    YMDH)
+        if [ $# -lt 5 ]; then
+          procError "usage: ${nm_func} date_format YEAR MONTH DAY HOUR"
+        fi
+        my_yr=${2}
+        my_mo=${3}
+        my_da=${4}
+        my_hr=${5}
+        my_date=$( getDate --date="${my_yr}-${my_mo}-${my_da} ${my_hr}:00:00" --fmt="%F %T" )
+        my_date_status=$?
+        if [ ${my_date_status} -eq 0 ]; then
+          my_date="$( echo "${my_date}" | sed 's/[-_/ .:]/ /g' )"
+          my_yr="$( echo "${my_date}" | awk '{printf $1}' )"
+          my_mo="$( echo "${my_date}" | awk '{printf $2}' )"
+          my_da="$( echo "${my_date}" | awk '{printf $3}' )"
+          my_hr="$( echo "${my_date}" | awk '{printf $4}' )"
+          my_mn="$( echo "${my_date}" | awk '{printf $5}' )"
+          my_sc="$( echo "${my_date}" | awk '{printf $6}' )"
+          out_format="${my_expr}?${my_yr}${my_expr}?${my_mo}${my_expr}?${my_da}"
+          out_format="${out_format}${my_expr}?${my_hr}(${my_expr}?${my_mn}${my_expr}?${my_sc})"
+        fi
+      ;;
+     YMD)
+        if [ $# -lt 4 ]; then
+          procError "usage: ${nm_func} date_format YEAR MONTH DAY"
+        fi
+        my_yr=${2}
+        my_mo=${3}
+        my_da=${4}
+        my_hr=0
+        my_date=$( getDate --date="${my_yr}-${my_mo}-${my_da} ${my_hr}:00:00" --fmt="%F %T" )
+        my_date_status=$?
+        if [ ${my_date_status} -eq 0 ]; then
+          my_date="$( echo "${my_date}" | sed 's/[-_/ .:]/ /g' )"
+          my_yr="$( echo "${my_date}" | awk '{printf $1}' )"
+          my_mo="$( echo "${my_date}" | awk '{printf $2}' )"
+          my_da="$( echo "${my_date}" | awk '{printf $3}' )"
+          my_hr="$( echo "${my_date}" | awk '{printf $4}' )"
+          my_mn="$( echo "${my_date}" | awk '{printf $5}' )"
+          my_sc="$( echo "${my_date}" | awk '{printf $6}' )"
+          out_format="${my_expr}?${my_yr}${my_expr}?${my_mo}${my_expr}?${my_da}"
+        fi
+      ;;
+     YM)
+        if [ $# -lt 3 ]; then
+          procError "usage: ${nm_func} date_format YEAR MONTH"
+        fi
+        my_yr=${2}
+        my_mo=${3}
+        my_da=1
+        my_hr=0
+        my_date=$( getDate --date="${my_yr}-${my_mo}-${my_da} ${my_hr}:00:00" --fmt="%F %T" )
+        my_date_status=$?
+        if [ ${my_date_status} -eq 0 ]; then
+          my_date="$( echo "${my_date}" | sed 's/[-_/ .:]/ /g' )"
+          my_yr="$( echo "${my_date}" | awk '{printf $1}' )"
+          my_mo="$( echo "${my_date}" | awk '{printf $2}' )"
+          my_da="$( echo "${my_date}" | awk '{printf $3}' )"
+          my_hr="$( echo "${my_date}" | awk '{printf $4}' )"
+          my_mn="$( echo "${my_date}" | awk '{printf $5}' )"
+          my_sc="$( echo "${my_date}" | awk '{printf $6}' )"
+          out_format="${my_expr}?${my_yr}${my_expr}?${my_mo}"
+        fi
+      ;;
+     Y)
+        if [ $# -lt 2 ]; then
+          procError "usage: ${nm_func} date_format YEAR"
+        fi
+        my_yr="$( get4DString "${2}" )"
+          my_date_status=$?
+        [ ${my_date_status} -eq 0 ] && \
+          out_format="${my_expr}?${my_yr}"
+      ;;
+    MDYH)
+        if [ $# -lt 5 ]; then
+          procError "usage: ${nm_func} date_format YEAR MONTH DAY HOUR"
+        fi
+        my_yr=${2}
+        my_mo=${3}
+        my_da=${4}
+        my_hr=${5}
+        my_date=$( getDate --date="${my_yr}-${my_mo}-${my_da} ${my_hr}:00:00" --fmt="%F %T" )
+        my_date_status=$?
+        if [ ${my_date_status} -eq 0 ]; then
+          my_date="$( echo "${my_date}" | sed 's/[-_/ .:]/ /g' )"
+          my_yr="$( echo "${my_date}" | awk '{printf $1}' )"
+          my_mo="$( echo "${my_date}" | awk '{printf $2}' )"
+          my_da="$( echo "${my_date}" | awk '{printf $3}' )"
+          my_hr="$( echo "${my_date}" | awk '{printf $4}' )"
+          my_mn="$( echo "${my_date}" | awk '{printf $5}' )"
+          my_sc="$( echo "${my_date}" | awk '{printf $6}' )"
+          out_format="${my_expr}?${my_mo}${my_expr}?${my_da}${my_expr}?${my_yr}"
+          out_format="${out_format}${my_expr}?${my_hr}(${my_expr}?${my_mn}${my_expr}?${my_sc})"
+        fi
+      ;;
+     MDY)
+        if [ $# -lt 4 ]; then
+          procError "usage: ${nm_func} date_format YEAR MONTH DAY"
+        fi
+        my_yr=${2}
+        my_mo=${3}
+        my_da=${4}
+        my_hr=0
+        my_date=$( getDate --date="${my_yr}-${my_mo}-${my_da} ${my_hr}:00:00" --fmt="%F %T" )
+        my_date_status=$?
+        if [ ${my_date_status} -eq 0 ]; then
+          my_date="$( echo "${my_date}" | sed 's/[-_/ .:]/ /g' )"
+          my_yr="$( echo "${my_date}" | awk '{printf $1}' )"
+          my_mo="$( echo "${my_date}" | awk '{printf $2}' )"
+          my_da="$( echo "${my_date}" | awk '{printf $3}' )"
+          my_hr="$( echo "${my_date}" | awk '{printf $4}' )"
+          my_mn="$( echo "${my_date}" | awk '{printf $5}' )"
+          my_sc="$( echo "${my_date}" | awk '{printf $6}' )"
+          out_format="${my_expr}?${my_mo}${my_expr}?${my_da}${my_expr}?${my_yr}"
+        fi
+      ;;
+    DMYH)
+        if [ $# -lt 5 ]; then
+          procError "usage: ${nm_func} date_format YEAR MONTH DAY HOUR"
+        fi
+        my_yr=${2}
+        my_mo=${3}
+        my_da=${4}
+        my_hr=${5}
+        my_date=$( getDate --date="${my_yr}-${my_mo}-${my_da} ${my_hr}:00:00" --fmt="%F %T" )
+        my_date_status=$?
+        if [ ${my_date_status} -eq 0 ]; then
+          my_date="$( echo "${my_date}" | sed 's/[-_/ .:]/ /g' )"
+          my_yr="$( echo "${my_date}" | awk '{printf $1}' )"
+          my_mo="$( echo "${my_date}" | awk '{printf $2}' )"
+          my_da="$( echo "${my_date}" | awk '{printf $3}' )"
+          my_hr="$( echo "${my_date}" | awk '{printf $4}' )"
+          my_mn="$( echo "${my_date}" | awk '{printf $5}' )"
+          my_sc="$( echo "${my_date}" | awk '{printf $6}' )"
+          out_format="${my_expr}?${my_da}${my_expr}?${my_mo}${my_expr}?${my_yr}"
+          out_format="${out_format}${my_expr}?${my_hr}(${my_expr}?${my_mn}${my_expr}?${my_sc})"
+        fi
+      ;;
+     DMY)
+        if [ $# -lt 4 ]; then
+          procError "usage: ${nm_func} date_format YEAR MONTH DAY"
+        fi
+        my_yr=${2}
+        my_mo=${3}
+        my_da=${4}
+        my_hr=0
+        my_date=$( getDate --date="${my_yr}-${my_mo}-${my_da} ${my_hr}:00:00" --fmt="%F %T" )
+        my_date_status=$?
+        if [ ${my_date_status} -eq 0 ]; then
+          my_date="$( echo "${my_date}" | sed 's/[-_/ .:]/ /g' )"
+          my_yr="$( echo "${my_date}" | awk '{printf $1}' )"
+          my_mo="$( echo "${my_date}" | awk '{printf $2}' )"
+          my_da="$( echo "${my_date}" | awk '{printf $3}' )"
+          my_hr="$( echo "${my_date}" | awk '{printf $4}' )"
+          my_mn="$( echo "${my_date}" | awk '{printf $5}' )"
+          my_sc="$( echo "${my_date}" | awk '{printf $6}' )"
+          out_format="${my_expr}?${my_da}${my_expr}?${my_mo}${my_expr}?${my_yr}"
+        fi
+      ;;
+     YJH)
+        if [ $# -lt 5 ]; then
+          procError "usage: ${nm_func} date_format YEAR MONTH DAY HOUR"
+        fi
+        my_yr=${2}
+        my_mo=${3}
+        my_da=${4}
+        my_hr=${5}
+        my_date=$( getDate --date="${my_yr}-${my_mo}-${my_da} ${my_hr}:00:00" --fmt="%F %T" )
+        my_date_status=$?
+        if [ ${my_date_status} -eq 0 ]; then
+          my_date="$( echo "${my_date}" | sed 's/[-_/ .:]/ /g' )"
+          my_yr="$( echo "${my_date}" | awk '{printf $1}' )"
+          my_mo="$( echo "${my_date}" | awk '{printf $2}' )"
+          my_da="$( echo "${my_date}" | awk '{printf $3}' )"
+          my_hr="$( echo "${my_date}" | awk '{printf $4}' )"
+          my_mn="$( echo "${my_date}" | awk '{printf $5}' )"
+          my_sc="$( echo "${my_date}" | awk '{printf $6}' )"
+          my_yd=$( getDate --date="${my_yr}-${my_mo}-${my_da} 00:00:00" --fmt="%j" )
+          out_format="${my_expr}?${my_yr}${my_expr}?${my_yd}"
+          out_format="${out_format}${my_expr}?${my_hr}(${my_expr}?${my_mn}${my_expr}?${my_sc})"
+        fi
+      ;;
+      YJ)
+        if [ $# -lt 4 ]; then
+          procError "usage: ${nm_func} date_format YEAR MONTH DAY"
+        fi
+        my_yr=${2}
+        my_mo=${3}
+        my_da=${4}
+        my_hr=0
+        my_date=$( getDate --date="${my_yr}-${my_mo}-${my_da} ${my_hr}:00:00" --fmt="%F %T" )
+        my_date_status=$?
+        if [ ${my_date_status} -eq 0 ]; then
+          my_date="$( echo "${my_date}" | sed 's/[-_/ .:]/ /g' )"
+          my_yr="$( echo "${my_date}" | awk '{printf $1}' )"
+          my_mo="$( echo "${my_date}" | awk '{printf $2}' )"
+          my_da="$( echo "${my_date}" | awk '{printf $3}' )"
+          my_hr="$( echo "${my_date}" | awk '{printf $4}' )"
+          my_mn="$( echo "${my_date}" | awk '{printf $5}' )"
+          my_sc="$( echo "${my_date}" | awk '{printf $6}' )"
+          my_yd=$( getDate --date="${my_yr}-${my_mo}-${my_da} 00:00:00" --fmt="%j" )
+          out_format="${my_expr}?${my_yr}${my_expr}?${my_yd}"
+        fi
+      ;;
+    *)
+        procError "invalid date format: ${date_format}" \
+                  "usage: ${nm_func} date_format [YEAR, MONTH, DAY, HOUR]" \
+                  "date format one of: YMDH YMD YM MDYH MDY DMYH DMY YJH YJ"
+      ;; # DEFAULT
+  esac
+
+  echo -n "${out_format}"
+
+  return ${my_date_status}
+}
+
+# -------------------------------------------------------
+# getInpTimeStamp()
+# Usage:      getInpTimeStamp "date string"
+# Parameters: date, accepted date string formats:
+#               YYYY_SEP_MO_SEP_DA HR_SEP_MN_SEP_SC [ZONE]
+#               where _SEP_ can be one of -,/,_,.,:,white space
+# Returns:    NONE
+# Echoes:     NONE
+# -------------------------------------------------------
+getInpTimeStamp()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local -i retval=0 jul0=-1
+  local thisDATE=
+
+  if [ $# -lt 1 ]; then
+    procError "need to define a date" \
+              "usage: ${nm_func} date"
+  fi
+
+  unset myYR myMO myDA myHR myMN mySC myJUL
+  unset myYRStr myMOStr myDAStr myHRStr myMNStr mySCStr myDATE
+
+  ref_date="${ref_date:-1900-12-31 00:00:00}"
+
+  thisDATE="$( echo "${1}" | sed 's/[-_/ .:]/ /g' )"
+      myYR="`echo "${thisDATE}" | awk '{printf $1}'`"
+    myYR="${myYR:--1}"
+      myMO="`echo "${thisDATE}" | awk '{printf $2}'`"
+    myMO="${myMO:--1}"
+      myDA="`echo "${thisDATE}" | awk '{printf $3}'`"
+    export myDA="${myDA:--1}"
+      myHR="`echo "${thisDATE}" | awk '{printf $4}'`"
+    myHR="${myHR:-0}"
+      myMN="`echo "${thisDATE}" | awk '{printf $5}'`"
+    myMN="${myMN:-0}"
+      mySC="`echo "${thisDATE}" | awk '{printf $6}'`"
+    mySC="${mySC:-0}"
+  thisDATE="$( getDate \
+               --date="${myYR}-${myMO}-${myDA} ${myHR}:${myMN}:${mySC}" \
+               --fmt='+%F %T' )"
+
+  if [ $? -ne 0 ]; then
+    procError "wrong date/format supplied" \
+              "Supplied: Date = ${myYR}-${myMO}-${myDA} ${myHR}:${myMN}:${mySC}"
+  fi
+
+  # Calculate the julian day (seconds) from ref_date
+  jul0=$( getDate --date="${ref_date}" --fmt='+%s' )
+  myJUL=$( getDate --date="${thisDATE}" --fmt='+%s' )
+  myJUL=$(( ${myJUL} - ${jul0} ))
+
+  thisDATE="$( echo "${thisDATE}" | sed 's/[-_/ .:]/ /g' )"
+  myYRStr="`echo "${thisDATE}" | awk '{printf $1}'`"
+  myMOStr="`echo "${thisDATE}" | awk '{printf $2}'`"
+  myDAStr="`echo "${thisDATE}" | awk '{printf $3}'`"
+  myHRStr="`echo "${thisDATE}" | awk '{printf $4}'`"
+  myMNStr="`echo "${thisDATE}" | awk '{printf $5}'`"
+  mySCStr="`echo "${thisDATE}" | awk '{printf $6}'`"
+
+  myYR="$( getPosInteger "${myYRStr}" )"
+  myMO="$( getPosInteger "${myMOStr}" )"
+  myDA="$( getPosInteger "${myDAStr}" )"
+  myHR="$( getPosInteger "${myHRStr}" )"
+  myMN="$( getPosInteger "${myMNStr}" )"
+  mySC="$( getPosInteger "${mySCStr}" )"
+
+  myDATE="${myYRStr}-${myMOStr}-${myDAStr}_${myHRStr}:${myMNStr}:${mySCStr}"
+
+  export myDATE myJUL
+  export myYR myMO myDA myHR myMN mySC
+  export myYRStr myMOStr myDAStr myHRStr myMNStr mySCStr
+}
+
+GetStamp_Date()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local yr_str mo_str da_str hr_str mn_str sc_str
+
+  if [ $# -lt 1 ]; then
+    procError "wrong number of arguments" \
+              "usage: ${nm_func} DateString"
+  fi
+
+  getInpTimeStamp "${1}"
+    yr_str="${myYRStr}"
+    mo_str="${myMOStr}"
+    da_str="${myDAStr}"
+    hr_str="${myHRStr}"
+    mn_str="${myMNStr}"
+    sc_str="${mySCStr}"
+  unset myYR myMO myDA myHR myMN mySC myJUL
+  unset myYRStr myMOStr myDAStr myHRStr myMNStr mySCStr myDATE
+
+  echo -n "${yr_str}-${mo_str}-${da_str}_${hr_str}:${mn_str}:${sc_str}"
+}
+
+GetStamp_Cycle()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local yr_str mo_str da_str hr_str mn_str sc_str
+
+  if [ $# -lt 1 ]; then
+    procError "wrong number of arguments" \
+              "usage: ${nm_func} DateString"
+  fi
+
+  getInpTimeStamp "${1}"
+    yr_str="${myYRStr}"
+    mo_str="${myMOStr}"
+    da_str="${myDAStr}"
+    hr_str="${myHRStr}"
+    mn_str="${myMNStr}"
+    sc_str="${mySCStr}"
+  unset myYR myMO myDA myHR myMN mySC myJUL
+  unset myYRStr myMOStr myDAStr myHRStr myMNStr mySCStr myDATE
+  
+  echo -n "${yr_str}${mo_str}${da_str}${hr_str}"
+}
+
+# -------------------------------------------------------
+# FirstLastDates()
+# Usage:      FirstLastDates beg_date end_date
+# Parameters: beg_date end_date
+#             beg_date : the start date of the simulation
+#                        (only the YEAR, MONTH and DAY OF MONTH fields
+#                         are used here)
+#             end_date : the end date of the simulation
+#                        (only the YEAR, MONTH and DAY OF MONTH fields
+#                         are used here)
+#
+# Returns:    0 (on success)
+# Exports:    previousDATES firstDATES lastDATES nextDATES
+# Echoes:     NONE
+#
+# Calculates the lists for:
+#  "previous" : 1-day prior the "first" date(s)
+#     "first" : first day(s) of the simulation, or the first day of the current month(s)
+#      "last" : last date(s) of the simulation, or the last day of the current month(s)
+#      "next" : 1-day after the "last" date(s)
+# 
+# -------------------------------------------------------
+FirstLastDates()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local sim_beg sim_end date_beg adv_hours=6
+  local prev_date first_date last_date next_date
+  local b_jul e_jul m_jul l_jul diff_jul
+  local adv_date my_date
+  local my_yr my_mo my_mo1 mo_days count
+
+  unset previousDATES firstDATES lastDATES nextDATES
+
+  if [ $# -lt 2 ]; then
+    procError "wrong number of arguments" \
+              "usage: ${nm_func} date1 date2"
+  fi
+
+  sim_beg="$( getDate --date="${1}" --fmt='+%F %T' )"
+  if [ $? -ne 0 ]; then
+    procError "wrong date/format for the begin date of the simulation" \
+              "Supplied: SimBeg = ${1}"
+  fi
+
+  sim_end="$( getDate --date="${2}" --fmt='+%F %T' )"
+  if [ $? -ne 0 ]; then
+    procError "wrong date/format for the end date of the simulation" \
+              "Supplied: SimEnd = ${2}"
+  fi
+
+  date_beg=$( getDate --date="${sim_beg}" --fmt='+%Y-%m-01' )
+
+  b_jul=$( getDate --date="${sim_beg}" --fmt='+%s' )
+  e_jul=$( getDate --date="${sim_end}" --fmt='+%s' )
+  if [ ${e_jul} -lt ${b_jul} ]; then
+    procError "wrong end date for the simulation: SimEnd >= SimBeg" \
+              "Supplied: SimBeg = ${1}" \
+              "Supplied: SimEnd = ${2}"
+  fi
+
+  ####################
+  # This section is when the requested simulation length
+  # is less or equal to one month
+   my_yr="$( echo "${sim_beg}" | sed -e 's/[;:,_\/-]/ /g' | awk '{print $1}' )"
+   my_mo="$( echo "${sim_beg}" | sed -e 's/[;:,_\/-]/ /g' | awk '{print $2}' )"
+  my_mo1="$( echo "${sim_end}" | sed -e 's/[;:,_\/-]/ /g' | awk '{print $2}' )"
+
+  mo_days=$( getMonthDays ${my_yr} ${my_mo} )
+  diff_jul=$(( (${e_jul} - ${b_jul}) / 86400 ))
+
+  if [ ${diff_jul} -le ${mo_days} -a ${my_mo} -eq ${my_mo1} ]; then
+    first_date="$( getDate --date="${sim_beg}" --fmt='+%F_%T' )"
+    last_date="$( getDate --date="${sim_end}" --fmt='+%F_%T' )"
+
+      adv_date="$( getDate --date="${sim_beg}" ) -${adv_hours} hours"
+    prev_date="$( getDate --date="${adv_date}" --fmt='+%F_00:00:00' )"
+
+      adv_date="$( getDate --date="${sim_end}" ) +1 days +${adv_hours} hours"
+    next_date="$( getDate --date="${adv_date}" --fmt='+%F_00:00:00' )"
+
+    previousDATES="${prev_date}"
+    firstDATES="${first_date}"
+    lastDATES="${last_date}"
+    nextDATES="${next_date}"
+
+    export previousDATES firstDATES lastDATES nextDATES
+
+    return 0
+  fi
+
+
+  ####################
+  # This section is when the requested simulation length
+  # spans more than one month
+  count=0
+  m_jul=${b_jul}
+  my_date="${date_beg}"
+  while [ ${m_jul} -lt ${e_jul} ]
+  do
+    first_date="${my_date}"
+    [ ${m_jul} -le ${b_jul} ] && first_date="${sim_beg}"
+
+    my_yr="`echo "${my_date}" | sed -e 's/[;:,_\/-]/ /g' | awk '{print $1}'`"
+    my_mo="`echo "${my_date}" | sed -e 's/[;:,_\/-]/ /g' | awk '{print $2}'`"
+    mo_days=`getMonthDays ${my_yr} ${my_mo}`
+
+      adv_date="`echo "${my_date}" | sed "s/\(.*-.*-\)\(.*\)/\1${mo_days}/g"`"
+      adv_date="$( getDate --date="${adv_date}") +1 days"
+    last_date="$( getDate --date="${adv_date}" --fmt='+%F 00:00:00' )"
+    l_jul="$( getDate --date="${last_date}" --fmt='+%s' )"
+    [ ${l_jul} -ge ${e_jul} ] && last_date="${sim_end}"
+
+      adv_date="$( getDate --date="${first_date}" ) -${adv_hours} hours"
+    prev_date="$( getDate --date="${adv_date}" --fmt='+%F 00:00:00' )"
+
+      adv_date="$( getDate --date="${last_date}" ) +1 days +${adv_hours} hours"
+    next_date="$( getDate --date="${adv_date}" --fmt='+%F 00:00:00' )"
+
+    previousDATES[${count}]="$( getDate --date="${prev_date}" --fmt='+%F_%T' )"
+    firstDATES[${count}]="$( getDate --date="${first_date}" --fmt='+%F_%T' )"
+    lastDATES[${count}]="$( getDate --date="${last_date}" --fmt='+%F_%T' )"
+    nextDATES[${count}]="$( getDate --date="${next_date}" --fmt='+%F_%T' )"
+
+    count=$(( ${count} + 1 ))
+    adv_date="$( getDate --date="${date_beg}" ) +${count} month"
+    my_date="$( getDate --date="${adv_date}" --fmt='+%F' )"
+    m_jul="$( getDate --date="${my_date}" --fmt='+%s' )"
+  done
+
+  previousDATES="${previousDATES[*]}"
+  firstDATES="${firstDATES[*]}"
+  lastDATES="${lastDATES[*]}"
+  nextDATES="${nextDATES[*]}"
+  
+  export previousDATES firstDATES lastDATES nextDATES
+
+  return 0
+}
+############################################################
+
+
+############################################################
+##### NETCDF/GRIB FUNCTIONS
+############################################################
+# -------------------------------------------------------
+# isNcdf()
+# Usage:      isNcdf filename
+# Parameters: filename
+# Returns:    0 if filename is a valid NetCDF file (that is no error)
+#             1 in any other case (that is error)
+# Exports:    NONE
+# Echoes:     "classic", "64-bit offset2" or ""
+#
+# Checks if the file "filename" is a valid NetCDF file.
+# -------------------------------------------------------
+isNcdf()
+{
+  local chk_str typ_str typ_ver out_str
+  local -i retval=1
+
+  [ ! -f "${1}" ] && return ${retval}
+
+  chk_str="`od -An -c -N4 "${1}" | grep -vi "command.*not.*found"`"
+  typ_str="`echo -e "${chk_str}" | sed 's/[^a-zA-Z]//g' | tr '[:lower:]' '[:upper:]'`"
+  typ_ver="`echo "${chk_str}" | awk '{print $4}'`"
+
+  [ "${typ_str}" = "CDF" -a "${typ_ver}" = "001" ] && out_str="classic"
+  [ "${typ_str}" = "CDF" -a "${typ_ver}" = "002" ] && out_str="64-bit offset"
+  [ -n "${out_str:+1}" ] && retval=0
+  
+  echo -n "${out_str}"
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# isGrib()
+# Usage:      isGrib filename
+# Parameters: filename
+# Returns:    0 if filename is a valid GRIB file (that is no error)
+#             1 in any other case (that is error)
+# Exports:    NONE
+# Echoes:     "grib1" or "grib2"
+#
+# Checks if the file "filename" is a valid GRIB file.
+# -------------------------------------------------------
+isGrib()
+{
+  local chk_str typ_str typ_ver out_str
+  local -i retval=1
+
+  [ ! -f "${1}" ] && return ${retval}
+
+  chk_str="`od -An -c -N8 "${1}" | grep -vi "command.*not.*found"`"
+  typ_str="$( echo "${chk_str}" | sed 's/[^a-zA-Z]/ /g' \
+                                | tr '[:lower:]' '[:upper:]' \
+                                | awk '{print $1$2$3$4}' )"
+  typ_ver="`echo "${chk_str}" | awk '{print $8}'`"
+
+  [ "${typ_str}" = "GRIB" -a "${typ_ver}" = "001" ] && out_str="grib1"
+  [ "${typ_str}" = "GRIB" -a "${typ_ver}" = "002" ] && out_str="grib2"
+  [ -n "${out_str:+1}" ] && retval=0
+
+  echo -n "${out_str}"
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# ncdf_getTimeStamp()
+# Usage:      ncdf_getTimeStamp filename
+# Parameters: filename
+# Returns:    0 if the datestamp in the NetCDF file is determined (that is no error)
+#             1 in any other case (that is error)
+# Exports:    NONE
+# Echoes:     Datestamp of the records in the NetCDF file
+#
+# Get the record datestamp from the NetCDF file "filename".
+# -------------------------------------------------------
+ncdf_getTimeStamp()
+{
+  local fname ftype
+  local chk_str= date_str= idate=
+  local yr mo da hr mn sc
+  local -i retval=1
+
+  [ ! -f "${1}" ] && return ${retval}
+  fname="${1}"
+
+  ftype="$( isNcdf "${fname}" )"
+  [ $? -ne 0 ] && return ${retval}
+  
+  # First try to use "cdo" (Climate Data Operators) because
+  # they produce a more elegant solution. If the program is not
+  # in the user's PATH, proceed to use ncks/ncdump.
+  chk_str="$( cdo -V 2>&1 | grep -i "climate.*operator" )"
+  if [ -n "${chk_str:+1}" ]; then
+    chk_str="$( strRmDuplicate "$( cdo -s showtimestamp "${fname}" 2>/dev/null )" )"
+    retval=$?
+    if [ ${retval} -eq 0 ]; then
+      for idate in ${chk_str}
+      do
+        idate="$( echo "${idate}" | sed 's/T/ /g' )"
+        idate="$( getDate --date="${idate}" --fmt='+%F_%T' )"
+        if [ $? -ne 0 ]; then
+          date_str=
+          retval=1
+          break
+        fi
+        date_str="${date_str} ${idate}"
+      done
+    fi
+    echo -n "${date_str}"
+    return ${retval}
+  fi
+
+  # If the above block of code fails proceed to use ncdump.
+  chk_str="$( ncdump 2>&1 | grep -i "netcdf" )"
+  if [ -n "${chk_str:+1}" ]; then
+    # This is hopefully the time dimension (record)
+    chk_str="$( ncdump -h "${fname}" 2>&1 | \
+                grep -i 'unlimited' | \
+                awk '{print $1}' )"
+    # This is hopefully the time variable
+    ncdf_queryVars "${fname}"
+    chk_str="$( echo "${NCDF_VAR_NAMES}" | \
+                tr " " "\n" | \
+                grep -i "^${chk_str}" | \
+                awk '{print $1}')"
+    unset NCDF_VAR_NAMES NCDF_VAR_VALUES
+
+    chk_str="$( ncdump -t -v "${chk_str}" "${fname}" 2>&1 | \
+                sed -e '1,/data:/d' -e '/^}/,$d' | \
+                sed -e 's/.*=//g; s/[;,"\{\}]/ /g' | \
+                sort -u )"
+    retval=$?
+    if [ ${retval} -eq 0 ]; then
+      for idate in ${chk_str}
+      do
+        idate="$( echo "${idate}" | sed 's/_/ /g' )"
+        idate="$( getDate --date="${idate}" --fmt='+%F_%T' )"
+        if [ $? -ne 0 ]; then
+          date_str=
+          retval=1
+          break
+        fi
+        date_str="${date_str} ${idate}"
+      done
+    fi
+    echo -n "${date_str}"
+    return ${retval}
+  fi
+
+  echo -n "${date_str}"
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# grib_getTimeStamp()
+# Usage:      grib_getTimeStamp filename
+# Parameters: filename
+# Returns:    0 if the datestamp in the grib file is determined (that is no error)
+#             1 in any other case (that is error)
+# Exports:    NONE
+# Echoes:     Datestamp of the records in the grib file
+#
+# Get the record datestamp from the GRIB file "filename".
+# -------------------------------------------------------
+grib_getTimeStamp()
+{
+  local fname ftype
+  local chk_str= date_str= idate=
+  local yr mo da hr mn sc
+  local -i retval=1
+
+  [ ! -f "${1}" ] && return ${retval}
+  fname="${1}"
+
+  ftype="$( isGrib "${fname}" )"
+  [ $? -ne 0 ] && return ${retval}
+  
+
+  # First try to use "cdo" (Climate Data Operators) because
+  # they produce a more elegant solution. If the program is not
+  # in the user's PATH, proceed to use wgrib/wgrib2.
+  chk_str="$( cdo -V 2>&1 | grep -i "climate.*operator" )"
+  if [ -n "${chk_str:+1}" ]; then
+    export GRIB_INVENTORY_MODE=time
+    chk_str="$( cdo -s showtimestamp "${fname}" 2>&1 | \
+                tr " " "\n" | sort -u )"
+    retval=$?
+    unset GRIB_INVENTORY_MODE
+    if [ ${retval} -eq 0 ]; then
+      for idate in ${chk_str}
+      do
+        idate="$( echo "${idate}" | sed 's/T/ /g' )"
+        idate="$( getDate --date="${idate}" --fmt='+%F_%T' )"
+        if [ $? -ne 0 ]; then
+          date_str=
+          retval=1
+          break
+        fi
+        date_str="${date_str} ${idate}"
+      done
+    fi
+    echo -n "${date_str}"
+    return ${retval}
+  fi
+
+  # If the above block of code fails proceed to use wgrib/wgrib2.
+  # GRIB1
+  if [ "${ftype}" = "grib1" ]; then
+    chk_str="$( wgrib 2>&1 | grep -i '^[[:space:]]*usage:[[:space:]]*wgrib' )"
+    if [ -n "${chk_str:+1}" ]; then
+      chk_str="$( wgrib -s -4yr "${fname}" 2>&1 | \
+                  sed 's/^.*d=//g; s/:.*//g' | sort -u )"
+      retval=$?
+      if [ ${retval} -eq 0 ]; then
+        for idate in ${chk_str}
+        do
+          yr="${idate:0:4}"
+          mo="${idate:4:2}"
+          da="${idate:6:2}"
+          hr="${idate:8:2}"
+          mn="${idate:10:2}"
+          sc="${idate:12:2}"
+          idate="${yr}-${mo}-${da} ${hr:-00}:${mn:-00}:${sc:-00}"
+          idate="$( getDate --date="${idate}" --fmt='+%F_%T' )"
+          if [ $? -ne 0 ]; then
+            date_str=
+            retval=1
+            break
+          fi
+          date_str="${date_str} ${idate}"
+        done
+      fi
+      echo -n "${date_str}"
+      return ${retval}
+    fi
+  fi
+
+  # GRIB2
+  if [ "${ftype}" = "grib2" ]; then
+    chk_str="$( wgrib2 -version 2>&1 | \
+                grep -vi 'command[[:space:]]*not[[:space:]]*found' )"
+    if [ -n "${chk_str:+1}" ]; then
+      chk_str="$( wgrib2 -VT "${fname}" | \
+                  sed 's/^.*vt=//g; s/:.*//g' | sort -u )"
+      retval=$?
+      if [ ${retval} -eq 0 ]; then
+        for idate in ${chk_str}
+        do
+          yr="${idate:0:4}"
+          mo="${idate:4:2}"
+          da="${idate:6:2}"
+          hr="${idate:8:2}"
+          mn="${idate:10:2}"
+          sc="${idate:12:2}"
+          idate="${yr}-${mo}-${da} ${hr:-00}:${mn:-00}:${sc:-00}"
+          idate="$( getDate --date="${idate}" --fmt='+%F_%T' )"
+          if [ $? -ne 0 ]; then
+            date_str=
+            retval=1
+            break
+          fi
+          date_str="${date_str} ${idate}"
+        done
+      fi
+      echo -n "${date_str}"
+      return ${retval}
+    fi
+  fi
+
+  echo -n "${date_str}"
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# ncdf_getModDataFile()
+# Usage:      ncdf_getModDataFile f{name/expr} search_dirs [[BegDate] [EndDate]]
+# Parameters: fname or fexpr, search_dirs, BegDate EndDate
+#             fname: the filename to search for (mandatory) OR
+#             fexpr: the list of filename regular expressions
+#                    to search for (mandatory)
+#             search_dirs: the list of directories to search
+#                          for the above files (mandatory)
+#             BegDate: if only this date is present (in date command format)
+#                      then this date should be also present in the NetCDF file;
+#                      it is intented to be used to match the correct
+#                      initialization files
+#             EndDate: if this parameter is used in addition to BegDate then
+#                      the Netcdf file should contain sufficient time records
+#                      that bound BegDate and EndDate; t is intented to be used
+#                      to match boundary contition, forcing files.
+#             NOTE: If none of BegDate and EndDate are supplied the file found
+#                   is only checked if it is a valid NetCDF file.
+# Returns:    0 if a valid file found (success)
+#             1 in any other case (error)
+# Exports:    NONE
+# Echoes:     NONE
+#
+# Find the NetCDF file that meets the user's criteria.
+# -------------------------------------------------------
+ncdf_getModDataFile()
+{
+  local nargs
+  local fexpr fdirs b_date e_date
+  local my_b_date my_e_date
+  local c_file c_date c_jul1 c_jul2 id
+  local -i retval=1
+
+  unset foundFilePath
+
+  nargs=$#
+  fexpr="${1}"
+  fdirs="${2}"
+  my_b_date="${3}"
+  my_e_date="${4}"
+
+  case 1 in
+    $(( ${nargs} == 2 )) )
+      searchFILE "${fexpr}" "${fdirs}"
+      c_file="$( echo ${foundFilePath} | awk '{print $1}' )"
+      unset foundFilePath
+      if [ -z "${c_file}" ]; then
+        procError "no valid files found" \
+                  "checked for files(s): ${fexpr}" \
+                  "     checked in dirs: ${fdirs}"
+      fi
+
+      if [ -z "$(isNcdf "${c_file}")" ]; then
+        procError "the file found is not a valid NetCDF file" \
+                  "                file: ${c_file}" \
+                  "checked for files(s): ${fexpr}" \
+                  "     checked in dirs: ${fdirs}"
+      fi
+
+      retval=0
+    ;;
+    $(( ${nargs} == 3 )) )
+      b_date="$( echo "${my_b_date}" | sed 's/_/ /g' )"
+      b_date="$( getDate --date="${b_date}" --fmt='+%F %T' )"
+      if [ $? -ne 0 ]; then
+        procError "wrong \"BegDate\" date supplied." \
+                  "BegDate = ${my_b_date}"
+      fi
+      b_jul=$( getDate --date="${b_date}" --fmt='+%s' )
+
+      searchFILE "${fexpr}" "${fdirs}"
+      c_file="$( echo ${foundFilePath} | awk '{print $1}' )"
+      unset foundFilePath
+      if [ -z "${c_file}" ]; then
+        procError "no valid files found" \
+                  "checked for files(s): ${fexpr}" \
+                  "     checked in dirs: ${fdirs}"
+      fi
+
+      c_date=( $( ncdf_getTimeStamp "${c_file}" ) )
+      for ((id=0; id<${#c_date[@]}; id++))
+      do
+          c_jul1="$( echo "${c_date[${id}]}" | sed 's/_/ /g' )"
+        c_jul1="$( getDate --date="${c_jul1}" --fmt='+%s' )"
+        if [ ${b_jul} -eq ${c_jul1} ]; then
+          retval=0
+          break
+        fi
+      done
+
+      if [ ${retval} -ne 0 ]; then
+        procError "wrong date(s) found in the file." \
+                  "File     = ${c_file}" \
+                  "FileDate = ${c_date[*]}" \
+                  "BegDate  = ${my_b_date}"
+      fi
+    ;;
+    $(( ${nargs} >= 4 )) )
+      b_date="$( echo "${my_b_date}" | sed 's/_/ /g' )"
+      b_date="$( getDate --date="${b_date}" --fmt='+%F %T' )"
+      if [ $? -ne 0 ]; then
+        procError "wrong \"BegDate\" date supplied." \
+                  "BegDate = ${my_b_date}"
+      fi
+      b_jul=$( getDate --date="${b_date}" --fmt='+%s' )
+
+      e_date="$( echo "${my_e_date}" | sed 's/_/ /g' )"
+      e_date="$( getDate --date="${e_date}" --fmt='+%F %T' )"
+      if [ $? -ne 0 ]; then
+        procError "wrong \"BegDate\" date supplied." \
+                  "BegDate = ${my_e_date}"
+      fi
+      e_jul=$( getDate --date="${e_date}" --fmt='+%s' )
+
+      searchFILE "${fexpr}" "${fdirs}"
+      c_file="$( echo ${foundFilePath} | awk '{print $1}' )"
+      unset foundFilePath
+      if [ -z "${c_file}" ]; then
+        procError "no valid files found" \
+                  "checked for files(s): ${fexpr}" \
+                  "     checked in dirs: ${fdirs}"
+      fi
+
+      c_date=( $( ncdf_getTimeStamp "${c_file}" ) )
+        c_jul1="$( echo "${c_date[0]}" | sed 's/_/ /g' )"
+      c_jul1="$( getDate --date="${c_jul1}" --fmt='+%s' )"
+        c_jul2="$( echo "${c_date[${#c_date[@]}-1]}" | sed 's/_/ /g' )"
+      c_jul2="$( getDate --date="${c_jul2}" --fmt='+%s' )"
+
+      if [ ${b_jul} -ge ${c_jul1} -a ${b_jul} -le ${c_jul2} -a \
+           ${e_jul} -ge ${c_jul1} -a ${e_jul} -le ${c_jul2} ]; then
+        retval=0
+      fi
+
+      if [ ${retval} -ne 0 ]; then
+        procError "wrong dates found in the file." \
+                  "File     = ${c_file}" \
+                  "FileDate = ${c_date[*]}" \
+                  "BegDate  = ${my_b_date}" \
+                  "EndDate  = ${my_e_date}"
+      fi
+    ;;
+    *)
+      procError "wrong number of arguments" \
+                "usage: ${nm_func} \"fname_expr\" \"dirs_to_search\" [[BegDate] [EndDate]]"
+    ;;
+  esac
+
+  export foundFilePath="${c_file}"
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# grib_getModDataFile()
+# Usage:      grib_getModDataFile f{name/expr} search_dirs [[BegDate] [EndDate]]
+# Parameters: fname or fexpr, search_dirs, BegDate EndDate
+#             fname: the filename to search for (mandatory) OR
+#             fexpr: the list of filename regular expressions
+#                    to search for (mandatory)
+#             search_dirs: the list of directories to search
+#                          for the above files (mandatory)
+#             BegDate: if only this date is present (in date command format)
+#                      then this date should be also present in the GRIB file;
+#                      it is intented to be used to match the correct
+#                      initialization files
+#             EndDate: if this parameter is used in addition to BegDate then
+#                      the Netcdf file should contain sufficient time records
+#                      that bound BegDate and EndDate; t is intented to be used
+#                      to match boundary contition, forcing files.
+#             NOTE: If none of BegDate and EndDate are supplied the file found
+#                   is only checked if it is a valid GRIB file.
+# Returns:    0 if a valid file found (success)
+#             1 in any other case (error)
+# Exports:    NONE
+# Echoes:     NONE
+#
+# Find the GRIB file that meets the user's criteria.
+# -------------------------------------------------------
+grib_getModDataFile()
+{
+  local nargs
+  local fexpr fdirs b_date e_date
+  local my_b_date my_e_date
+  local c_file c_date c_jul1 c_jul2 id
+  local -i retval=1
+
+  unset foundFilePath
+
+  nargs=$#
+  fexpr="${1}"
+  fdirs="${2}"
+  my_b_date="${3}"
+  my_e_date="${4}"
+
+  case 1 in
+    $(( ${nargs} == 2 )) )
+      searchFILE "${fexpr}" "${fdirs}"
+      c_file="$( echo ${foundFilePath} | awk '{print $1}' )"
+      unset foundFilePath
+      if [ -z "${c_file}" ]; then
+        procError "no valid files found" \
+                  "checked for files(s): ${fexpr}" \
+                  "     checked in dirs: ${fdirs}"
+      fi
+
+      if [ -z "$(isGrib "${c_file}")" ]; then
+        procError "the file found is not a valid GRIB file" \
+                  "                file: ${c_file}" \
+                  "checked for files(s): ${fexpr}" \
+                  "     checked in dirs: ${fdirs}"
+      fi
+
+      retval=0
+    ;;
+    $(( ${nargs} == 3 )) )
+      b_date="$( echo "${my_b_date}" | sed 's/_/ /g' )"
+      b_date="$( getDate --date="${b_date}" --fmt='+%F %T' )"
+      if [ $? -ne 0 ]; then
+        procError "wrong \"BegDate\" date supplied." \
+                  "BegDate = ${my_b_date}"
+      fi
+      b_jul=$( getDate --date="${b_date}" --fmt='+%s' )
+
+      searchFILE "${fexpr}" "${fdirs}"
+      c_file="$( echo ${foundFilePath} | awk '{print $1}' )"
+      unset foundFilePath
+      if [ -z "${c_file}" ]; then
+        procError "no valid files found" \
+                  "checked for files(s): ${fexpr}" \
+                  "     checked in dirs: ${fdirs}"
+      fi
+
+      c_date=( $( grib_getTimeStamp "${c_file}" ) )
+      for ((id=0; id<${#c_date[@]}; id++))
+      do
+          c_jul1="$( echo "${c_date[${id}]}" | sed 's/_/ /g' )"
+        c_jul1="$( getDate --date="${c_jul1}" --fmt='+%s' )"
+        if [ ${b_jul} -eq ${c_jul1} ]; then
+          retval=0
+          break
+        fi
+      done
+
+      if [ ${retval} -ne 0 ]; then
+        procError "wrong date(s) found in the file." \
+                  "File     = ${c_file}" \
+                  "FileDate = ${c_date[*]}" \
+                  "BegDate  = ${my_b_date}"
+      fi
+    ;;
+    $(( ${nargs} >= 4 )) )
+      b_date="$( echo "${my_b_date}" | sed 's/_/ /g' )"
+      b_date="$( getDate --date="${b_date}" --fmt='+%F %T' )"
+      if [ $? -ne 0 ]; then
+        procError "wrong \"BegDate\" date supplied." \
+                  "BegDate = ${my_b_date}"
+      fi
+      b_jul=$( getDate --date="${b_date}" --fmt='+%s' )
+
+      e_date="$( echo "${my_e_date}" | sed 's/_/ /g' )"
+      e_date="$( getDate --date="${e_date}" --fmt='+%F %T' )"
+      if [ $? -ne 0 ]; then
+        procError "wrong \"BegDate\" date supplied." \
+                  "BegDate = ${my_e_date}"
+      fi
+      e_jul=$( getDate --date="${e_date}" --fmt='+%s' )
+
+      searchFILE "${fexpr}" "${fdirs}"
+      c_file="$( echo ${foundFilePath} | awk '{print $1}' )"
+      unset foundFilePath
+      if [ -z "${c_file}" ]; then
+        procError "no valid files found" \
+                  "checked for files(s): ${fexpr}" \
+                  "     checked in dirs: ${fdirs}"
+      fi
+
+      c_date=( $( grib_getTimeStamp "${c_file}" ) )
+        c_jul1="$( echo "${c_date[0]}" | sed 's/_/ /g' )"
+      c_jul1="$( getDate --date="${c_jul1}" --fmt='+%s' )"
+        c_jul2="$( echo "${c_date[${#c_date[@]}-1]}" | sed 's/_/ /g' )"
+      c_jul2="$( getDate --date="${c_jul2}" --fmt='+%s' )"
+
+      if [ ${b_jul} -ge ${c_jul1} -a ${b_jul} -le ${c_jul2} -a \
+           ${e_jul} -ge ${c_jul1} -a ${e_jul} -le ${c_jul2} ]; then
+        retval=0
+      fi
+
+      if [ ${retval} -ne 0 ]; then
+        procError "wrong dates found in the file." \
+                  "File     = ${c_file}" \
+                  "FileDate = ${c_date[*]}" \
+                  "BegDate  = ${my_b_date}" \
+                  "EndDate  = ${my_e_date}"
+      fi
+    ;;
+    *)
+      procError "wrong number of arguments" \
+                "usage: ${nm_func} \"fname_expr\" \"dirs_to_search\" [[BegDate] [EndDate]]"
+    ;;
+  esac
+
+  export foundFilePath="${c_file}"
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# ncdf_queryDims()
+# Usage:      ncdf_queryDims filename
+# Parameters: filename
+# Returns:    0 on success (that is no error)
+# Exports:    NCDF_DIM_NAMES NCDF_DIM_VALUES
+# Echoes:     NONE
+#
+# Queries all the dimensions (names and values)
+# from the NetCDF file.
+# -------------------------------------------------------
+ncdf_queryDims()
+{
+  local nm_func="${FUNCNAME[0]}"
+  local NCDUMP="ncdump"
+
+  local fname tmp_var chk_var chk_val
+  local var_names var_vals
+
+  unset NCDF_DIM_NAMES NCDF_DIM_VALUES
+
+  # Get the input filename
+  fname="${1}"
+  if [ -z "$(isNcdf "${fname}")" ]; then
+    procError "the input filename is not a valid NetCDF file" \
+              "supplied: FILENAME = ${fname:-UNDEF}" \
+              "usage: ${nm_func} filename [options]"
+  fi
+
+  # Check for the required programs
+  chk_var="$( ${NCDUMP} 2>&1 | grep -i "netcdf" )"
+  if [ -z "${chk_var}" ]; then
+    procError "the required program \"${NCDUMP}\" is not available" \
+              "cannot continue with the calculations"
+  fi
+
+  # Read only the dimensions section from the NetCDF file,
+  # replace all occurences of "=" and ";" with space and
+  # store the result in the multi-line string "tmp_var"
+  tmp_var="$( ${NCDUMP} -h ${fname} 2>&1 | \
+              sed -e '1,/^.*[Dd][Ii][Mm][Ee][Nn][Ss][Ii][Oo][Nn][Ss]:/d' \
+                  -e '/^.*[Vv][Aa][Rr][Ii][Aa][Bb][Ll][Ee][Ss]/,$d' | \
+              sed -e 's/[=;]/ /g' )"
+
+  # Read "tmp_var" line by line and extract the names and the values
+  # of all dimensions found in the NetCDF file
+  while read -r line
+  do
+    if [ "X`echo "${line}" | grep -i "unlimited"`" != "X" ]; then
+      chk_var="$( echo "${line}" | awk '{print $1}' )"
+      chk_val="$( echo "${line}" | \
+                  sed -e 's/.*(\([0-9]*\).*[Cc][Uu][Rr][Rr][Ee][Nn][Tt].*).*/\1/' | \
+                  awk '{print $1}' )"
+      if [ -n "${chk_var}" -a -n "${chk_val}" ]; then
+        var_names="${var_names} ${chk_var}"
+        var_vals="${var_vals} ${chk_val}"
+      fi
+    else
+      chk_var="$( echo "${line}" | awk '{print $1}' )"
+      chk_val="$( echo "${line}" | awk '{print $2}' )"
+      if [ -n "${chk_var}" -a -n "${chk_val}" ]; then
+        var_names="${var_names} ${chk_var}"
+        var_vals="${var_vals} ${chk_val}"
+      fi
+    fi
+  done <<< "${tmp_var}"
+
+  export NCDF_DIM_NAMES="${var_names}"
+  export NCDF_DIM_VALUES="${var_vals}"
+
+  return 0
+}
+
+# -------------------------------------------------------
+# ncdf_getDim()
+# Usage:      ncdf_getDim filename dimtype
+# Parameters: filename dimtype
+# Returns:    0 on success (that is no error)
+# Exports:    NONE
+# Echoes:     the pair: dimNAM dimVAL
+#
+# Get the name and the value of the requested dimension
+# from the NetCDF file.
+# -------------------------------------------------------
+ncdf_getDim()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local fname dtype chk_var
+  local var_names var_vals
+  local dimNAM dimVAL
+
+  if [ $# -lt 2 ]; then
+    procError "wrong number of arguments" \
+              "usage: ${nm_func} filename dimtype"
+  fi
+
+  # Get the input filename
+  fname="${1}"
+
+  # Get the dimension type
+  dtype="`toLOWER "${2}"`"
+  case "${dtype}" in
+    horx) chk_DIM="lon longitude x idim xi_rho west_east" ;;
+    hory) chk_DIM="lat latitude y jdim eta_rho shouth_north" ;;
+    vert) chk_DIM="depth z kdim s_rho bottom_top" ;;
+    time) chk_DIM="time mt ocean_time bry_time clim_time" ;;
+    *)    chk_DIM="${dtype}" ;;
+  esac
+
+  ncdf_queryDims ${fname}
+  var_names=( ${NCDF_DIM_NAMES} )
+  var_vals=( ${NCDF_DIM_VALUES} )
+  unset NCDF_DIM_NAMES NCDF_DIM_VALUES
+
+  for ((ivar = 0; ivar < ${#var_names[@]}; ivar++))
+  do
+    for chk_var in ${chk_DIM}
+    do
+      if [ "`toLOWER "${var_names[${ivar}]}"`" = "${chk_var}" ]; then
+        dimNAM="${var_names[${ivar}]}"
+        dimVAL="${var_vals[${ivar}]}"
+        break 2
+      fi
+    done
+  done
+
+  if [ -z "${dimNAM}" -o -z "${dimVAL}" ]; then
+    echo ""
+    return 1
+  fi
+
+  echo "`strTrim "${dimNAM} ${dimVAL}" 2`"
+  return 0
+}
+
+# -------------------------------------------------------
+# ncdf_queryVars()
+# Usage:      ncdf_queryVars filename
+# Parameters: filename
+# Returns:    0 on success (that is no error)
+# Exports:    NCDF_VAR_NAMES NCDF_VAR_VALUES
+# Echoes:     NONE
+#
+# Queries all the variables (names)
+# from the NetCDF file.
+# -------------------------------------------------------
+ncdf_queryVars()
+{
+  local nm_func="${FUNCNAME[0]}"
+  local NCDUMP="ncdump" NCKS="ncks"
+  local -i useNCKS=0
+
+  local fname tmp_var chk_var chk_val
+  local var_names var_vals
+
+  unset NCDF_VAR_NAMES NCDF_VAR_VALUES
+
+  # Get the input filename
+  fname="${1}"
+  if [ -z "$(isNcdf "${fname}")" ]; then
+    procError "the input filename is not a valid NetCDF file" \
+              "supplied: FILENAME = ${fname:-UNDEF}" \
+              "usage: ${nm_func} filename [options]"
+  fi
+
+  if [ ${useNCKS:-0} -le 0 ]; then
+    # Check for the required programs
+    chk_var="$( ${NCDUMP} 2>&1 | grep -i "netcdf" )"
+    if [ -z "${chk_var}" ]; then
+      procError "the required program \"${NCDUMP}\" is not available" \
+                "cannot continue with the calculations"
+    fi
+
+    # Read only the variables section from the NetCDF file,
+    # replace all occurences of "( = , ; )" with space and
+    # store the result in the multi-line string "tmp_var"
+    tmp_var="$( ${NCDUMP} -h ${fname} 2>&1 | \
+                sed -e '1,/^.*[vV][aA][rR][iI][aA][bB][lL][eE][sS]:/d' \
+                    -e '/^.*[Gg][Ll][Oo][Bb][Aa][Ll]/,$d' | \
+                grep -v ':.*=' | \
+                sed -e 's/[(=,;)]/ /g' | \
+                awk '{print $2}' )"
+
+    # "tmp_var" contains the list of all the variables
+    # found in the NetCDF file
+    var_names="$( echo ${tmp_var} )"
+  else
+    # Check for the required programs
+    chk_var="$( ${NCKS} --version 2>&1 | grep -i "netcdf.*operator" )"
+    if [ -z "${chk_var}" ]; then
+      procError "the required program \"${NCKS}\" is not available" \
+                "cannot continue with the calculations"
+    fi
+
+    tmp_var="$( ${NCKS} -m ${fname} | grep -i 'RAM' | cut -d ' ' -f 1 )"
+    # "tmp_var" contains the list of all the variables
+    # found in the NetCDF file
+    var_names="$( echo ${tmp_var} )"
+  fi
+
+  export NCDF_VAR_NAMES="${var_names}"
+  export NCDF_VAR_VALUES="${var_vals}"
+
+  return 0
+}
+
+# -------------------------------------------------------
+# ncdf_getGlobVar()
+# Usage:      ncdf_getGlobVar filename global_variable_name
+# Parameters: filename global_variable_name
+# Returns:    0 on success (that is no error)
+# Exports:    ncdfVarVal
+# Echoes:     NONE
+#
+# Obtains the value of a global variable
+# from the NetCDF file.
+# -------------------------------------------------------
+ncdf_getGlobVar()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local fname in_var
+  local out_var
+
+  unset ncdfVarVal
+
+  if [ $# -lt 2 ]; then
+    procError "wrong number of arguments" \
+              "usage: ${nm_func} filename varname"
+  fi
+
+  fname="${1}"
+  in_var="`echo "${2}" | sed -e 's/[()]/\\\&/g'`"
+
+  if [ -z "$(isNcdf "${fname}")" ]; then
+    procError "the input filename is not a valid NetCDF file" \
+              "supplied: FILENAME = ${fname:-UNDEF}"
+  fi
+
+  out_var="$( ncdump -h ${fname} 2>&1 | grep -Ei "^[[:space:]]*${in_var}[[:space:]]*=" )"
+  out_var="$( echo "${out_var}" | sed -e 's/.*=//g' | sed 's/[;:,_\{\}]/ /g' )"
+
+  export ncdfVarVal="${out_var}"
+
+  return 0
+}
+
+# -------------------------------------------------------
+# ncdf_getVar()
+# Usage:      ncdf_getVar filename variable_name
+# Parameters: filename variable_name
+# Returns:    0 on success (that is no error)
+# Exports:    ncdfVarVal
+# Echoes:     NONE
+#
+# Obtains the value of a variable
+# from the NetCDF file.
+# -------------------------------------------------------
+ncdf_getVar()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local fname in_var in_opt
+  local out_var
+
+  unset ncdfVarVal
+
+  if [ $# -lt 2 ]; then
+    procError "wrong number of arguments" \
+              "usage: ${nm_func} filename varname"
+  fi
+
+  fname="${1}"
+  in_var="`echo "${2}" | sed -e 's/[()]/\\\&/g'`"
+  in_opt="${3:--v}"
+
+  if [ -z "$(isNcdf "${fname}")" ]; then
+    procError "the input filename is not a valid NetCDF file" \
+              "supplied: FILENAME = ${fname:-UNDEF}"
+  fi
+
+  out_var="$( ncdump ${in_opt} ${in_var} ${fname} 2>&1 | sed -e '1,/data:/d' -e '/^}/,$d' )"
+  out_var=( $( echo "${out_var}" | sed -e 's/.*=//g' | sed 's/[;:,_\{\}]/ /g' ) )
+
+  export ncdfVarVal="${out_var[@]}"
+
+  return 0
+}
+
+# -------------------------------------------------------
+# ncdf_getVarMax()
+# Usage:      ncdf_getVarMax filename variable_name
+# Parameters: filename variable_name
+# Returns:    0 on success (that is no error)
+# Exports:    NONE
+# Echoes:     the maximum of the variable
+#
+# Obtains the maximum value of a variable
+# from the NetCDF file.
+# -------------------------------------------------------
+ncdf_getVarMax()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local fname tmp_file in_var out_var
+
+  if [ $# -lt 2 ]; then
+    procError "wrong number of arguments" \
+              "usage: ${nm_func} filename varname"
+  fi
+
+  fname="${1}"
+  in_var="`echo "${2}" | sed -e 's/[()]/\\\&/g'`"
+  tmp_file="${fname%.*}-tmp.nc"
+
+  if [ -z "$(isNcdf "${fname}")" ]; then
+    procError "the input filename is not a valid NetCDF file" \
+              "supplied: FILENAME = ${1:-UNDEF}"
+  fi
+
+  ncwa -y max -O -C -v "${in_var}" "${fname}" "${tmp_file}" >/dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    [ -f "${tmp_file}" ] && rm -f "${tmp_file}"
+    echo ""
+    return 1
+  fi
+
+  out_var="`ncks -H -C -s '%.6f' -v "${in_var}" "${tmp_file}" 2>/dev/null | cut -f 3- -d ' '`"
+  if [ $? -ne 0 ]; then
+    [ -f "${tmp_file}" ] && rm -f "${tmp_file}"
+    echo ""
+    return 1
+  fi
+
+  [ -f "${tmp_file}" ] && rm -f "${tmp_file}"
+  echo "`strTrim "${out_var}" 2`"
+
+  return 0
+}
+
+# -------------------------------------------------------
+# ncdf_getVarMin()
+# Usage:      ncdf_getVarMin filename variable_name
+# Parameters: filename variable_name
+# Returns:    0 on success (that is no error)
+# Exports:    NONE
+# Echoes:     the minimum of the variable
+#
+# Obtains the minimum value of a variable
+# from the NetCDF file.
+# -------------------------------------------------------
+ncdf_getVarMin()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local fname tmp_file in_var out_var
+
+  if [ $# -lt 2 ]; then
+    procError "wrong number of arguments" \
+              "usage: ${nm_func} filename varname"
+  fi
+
+  fname="${1}"
+  in_var="`echo "${2}" | sed -e 's/[()]/\\\&/g'`"
+  tmp_file="${fname%.*}-tmp.nc"
+
+  if [ -z "$(isNcdf "${fname}")" ]; then
+    procError "the input filename is not a valid NetCDF file" \
+              "supplied: FILENAME = ${1:-UNDEF}"
+  fi
+
+  ncwa -y min -O -C -v "${in_var}" "${fname}" "${tmp_file}" >/dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    [ -f "${tmp_file}" ] && rm -f "${tmp_file}"
+    echo ""
+    return 1
+  fi
+
+  out_var="`ncks -H -C -s '%.6f' -v "${in_var}" "${tmp_file}" 2>/dev/null | cut -f 3- -d ' '`"
+  if [ $? -ne 0 ]; then
+    [ -f "${tmp_file}" ] && rm -f "${tmp_file}"
+    echo ""
+    return 1
+  fi
+
+  [ -f "${tmp_file}" ] && rm -f "${tmp_file}"
+  echo "`strTrim "${out_var}" 2`"
+
+  return 0
+}
+
+# -------------------------------------------------------
+# ncdf_getVarMean()
+# Usage:      ncdf_getVarMean filename variable_name
+# Parameters: filename variable_name
+# Returns:    0 on success (that is no error)
+# Exports:    NONE
+# Echoes:     the mean (average) of the variable
+#
+# Obtains the mean (average) of a variable
+# from the NetCDF file.
+# -------------------------------------------------------
+ncdf_getVarMean()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local fname tmp_file in_var out_var
+
+  if [ $# -lt 2 ]; then
+    procError "wrong number of arguments" \
+              "usage: ${nm_func} filename varname"
+  fi
+
+  fname="${1}"
+  in_var="`echo "${2}" | sed -e 's/[()]/\\\&/g'`"
+  tmp_file="${fname%.*}-tmp.nc"
+
+  if [ -z "$(isNcdf "${fname}")" ]; then
+    procError "the input filename is not a valid NetCDF file" \
+              "supplied: FILENAME = ${1:-UNDEF}"
+  fi
+
+  ncwa -y avg -O -C -v "${in_var}" "${fname}" "${tmp_file}" >/dev/null 2>&1
+  if [ $? -ne 0 ]; then
+    [ -f "${tmp_file}" ] && rm -f "${tmp_file}"
+    echo ""
+    return 1
+  fi
+
+  out_var="`ncks -H -C -s '%.6f' -v "${in_var}" "${tmp_file}" 2>/dev/null | cut -f 3- -d ' '`"
+  if [ $? -ne 0 ]; then
+    [ -f "${tmp_file}" ] && rm -f "${tmp_file}"
+    echo ""
+    return 1
+  fi
+
+  [ -f "${tmp_file}" ] && rm -f "${tmp_file}"
+  echo "`strTrim "${out_var}" 2`"
+
+  return 0
+}
+
+# -------------------------------------------------------
+# ncdf_getVarDims()
+# Usage:      ncdf_getVarDims filename variable_name
+# Parameters: filename variable_name
+# Returns:    0 on success (that is no error)
+# Exports:    NONE
+# Echoes:     the dimensions of a variable (order: X, Y, Z, T)
+#
+# Obtains the dimensions of a variable
+# from the NetCDF file.
+# -------------------------------------------------------
+ncdf_getVarDims()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local fname in_var tmp_var out_var
+  local i j
+
+  if [ $# -lt 2 ]; then
+    procError "wrong number of arguments" \
+              "usage: ${nm_func} filename varname"
+  fi
+
+  fname="${1}"
+  in_var="`echo "${2}" | sed -e 's/[()]/\\\&/g'`"
+
+  if [ -z "$(isNcdf "${fname}")" ]; then
+    procError "the input filename is not a valid NetCDF file" \
+              "supplied: FILENAME = ${1:-UNDEF}"
+  fi
+
+  out_var="`ncks -m -M "${fname}"  2>/dev/null | grep -E -i "^${in_var}.*dimension.*:.*size" | cut -f 7 -d ' '`"
+  if [ $? -ne 0 ]; then
+    echo ""
+    return 1
+  fi
+
+  j=0
+  out_var=( $( strTrim "${out_var}" 2 ) )
+  for ((i=$(( ${#out_var[@]} - 1 )); i>=0; i--))
+  do
+    tmp_var[j]=${out_var[i]}
+    j=$(( ${j} + 1 ))
+  done
+  out_var="${tmp_var[*]}"
+
+  echo "${out_var}"
+
+  return 0
+}
+
+# -------------------------------------------------------
+# SSTnc2grib()
+# Usage:      SSTnc2grib filename
+# Parameters: filename
+# Returns:    0 on success (that is no error)
+# Exports:    NONE
+# Echoes:     NONE
+#
+# Creates a GRIB file from the input NetCDF filename
+# and for the sea surface temperature.
+# -------------------------------------------------------
+SSTnc2grib()
+{
+  local nm_func="${FUNCNAME[0]}"
+  local CDO="cdo" NCKS="ncks" NCDUMP="ncdump"
+
+  local fname fname_pfx inp_file inp_dir inp_bas
+  local out_file out_grib grid_file weight_file
+
+  local xdimNAM ydimNAM my_xdimNAM my_ydimNAM
+  local xdimVAL ydimVAL
+  local lonNAM latNAM my_lonNAM my_latNAM
+  local varNAM my_varNAM grib_type tmp_var
+  local var_names var_vals ivar chk_var
+  local chk_xNAM chk_yNAM chk_vNAM
+
+  local ngrd
+  local dim_lon min_lon max_lon dlon nlons nlons1
+  local dim_lat min_lat max_lat dlat nlats nlats1
+
+  # Get the input filename
+  fname="${1}"
+  if [ -z "$(isNcdf "${fname}")" ]; then
+    procError "the input filename is not a valid NetCDF file" \
+              "supplied: FILENAME = ${fname:-UNDEF}" \
+              "usage: ${nm_func} filename [options]"
+  fi
+
+  # Get the remaining optional arguments
+  while test $# -gt 0; do
+    case "${1}" in
+      --*=*)
+        opt_opt="`echo "${1}" | sed 's/=.*//' | tr '[:upper:]' '[:lower:]'`"
+        opt_opt="`echo "${1}" | sed 's/=.*//'`"
+        opt_arg="`echo "${1}" | sed 's/.*=//'`"
+        ;;
+      *)
+        opt_opt="`echo "${1}" | tr '[:upper:]' '[:lower:]'`"
+        opt_arg="${opt_opt}"
+        ;;
+    esac
+
+    case "${opt_opt}" in
+      --pfx)
+          if [ "X${opt_arg}" != "X" ]; then
+            fname_pfx="${opt_arg}"
+          fi
+        ;;
+      --lon)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_lonNAM="${opt_arg}"
+          fi
+        ;;
+      --lat)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_latNAM="${opt_arg}"
+          fi
+        ;;
+      --var)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_varNAM="${opt_arg}"
+          fi
+        ;;
+      --xdim)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_xdimNAM="${opt_arg}"
+          fi
+        ;;
+      --ydim)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_ydimNAM="${opt_arg}"
+          fi
+        ;;
+      --gtype)
+          if [ "X${opt_arg}" != "X" ]; then
+            grib_type="${opt_arg}"
+          fi
+        ;;
+      *) ;; # DEFAULT
+    esac
+    shift
+  done
+
+  # Check for the required programs
+  chk_var="$( ${NCDUMP} 2>&1 | grep -i "netcdf" )"
+  if [ -z "${chk_var}" ]; then
+    procError "the required program \"${NCDUMP}\" is not available" \
+              "cannot continue with the calculations"
+  fi
+
+  chk_var="$( ${CDO} -V 2>&1 | grep -i "climate.*operator" )"
+  if [ -z "${chk_var}" ]; then
+    procError "the required program \"${CDO}\" is not available" \
+              "cannot continue with the calculations"
+  fi
+
+  # Determine/Set the grib format type: one of grib/grib2
+  #echo "grib_type = ${grib_type}"
+  grib_type="`toLOWER "${grib_type}"`"
+  [ "${grib_type}" != "grib1" -a "${grib_type}" != "grib2" ] && grib_type="grib1"
+
+  # Determine a name for the output file
+  inp_file="${fname}"
+  inp_dir=$( dirname ${fname} )
+    [ "X${inp_dir}" = "X." ] && inp_dir=
+  inp_bas=$( basename ${fname} )
+  if [ -z "${fname_pfx}" ]; then
+    out_file="${inp_dir:+${inp_dir}/}sst_${inp_bas}"
+  else
+    out_file="${inp_bas##${fname_pfx}}"
+    out_file="${inp_dir:+${inp_dir}/}${fname_pfx%%_}-sst_${out_file}"
+  fi
+
+
+  ########################
+  # Check if the required dimensions exist in the input NetCDF file
+  tmp_var="`ncdf_getDim ${inp_file} ${my_xdimNAM:-horx}`"
+  if [ $? -ne 0 ]; then
+    procError "could not find the required horizontal dimension in the input file:" \
+              "INP FILE = ${inp_file}" \
+              "SEARCHED FOR: ${my_xdimNAM:-horx}"
+  fi
+  xdimNAM="`echo ${tmp_var} | awk '{print $1}'`"
+
+  tmp_var="`ncdf_getDim ${inp_file} ${my_ydimNAM:-hory}`"
+  if [ $? -ne 0 ]; then
+    procError "could not find the required horizontal dimension in the input file:" \
+              "INP FILE = ${inp_file}" \
+              "SEARCHED FOR: ${my_ydimNAM:-hory}"
+  fi
+  ydimNAM="`echo ${tmp_var} | awk '{print $1}'`"
+  ########################
+
+
+  ########################
+  # Check if the required variables exist in the input NetCDF file
+  ncdf_queryVars ${inp_file}
+  var_names=( ${NCDF_VAR_NAMES} )
+  unset NCDF_VAR_NAMES NCDF_VAR_VALUES
+
+  chk_xNAM="longitude lon lons lon_rho xlong"
+  chk_yNAM="latitude lat lats lat_rho xlat"
+  chk_vNAM="temperature temp water_temperature water_temp sst"
+
+  for ((ivar = 0; ivar < ${#var_names[@]}; ivar++))
+  do
+    # Check for a "Longitude" variable
+    if [ -z "${lonNAM}" ]; then
+      if [ -n "${my_lonNAM:+1}" ]; then
+        if [ "`toLOWER "${var_names[${ivar}]}"`" = "`toLOWER "${my_lonNAM}"`" ]; then
+          lonNAM="${var_names[${ivar}]}"
+        fi
+      else
+        for chk_var in ${chk_xNAM}
+        do
+          if [ "`toLOWER "${var_names[${ivar}]}"`" = "${chk_var}" ]; then
+            lonNAM="${var_names[${ivar}]}"
+            break
+          fi
+        done
+      fi
+    fi
+
+    # Check for a "Latitude" variable
+    if [ -z "${latNAM}" ]; then
+      if [ -n "${my_latNAM:+1}" ]; then
+        if [ "`toLOWER "${var_names[${ivar}]}"`" = "`toLOWER "${my_latNAM}"`" ]; then
+          latNAM="${var_names[${ivar}]}"
+        fi
+      else
+        for chk_var in ${chk_yNAM}
+        do
+          if [ "`toLOWER "${var_names[${ivar}]}"`" = "${chk_var}" ]; then
+            latNAM="${var_names[${ivar}]}"
+            break
+          fi
+        done
+      fi
+    fi
+
+    # Check for a "Temperature" variable
+    if [ -z "${varNAM}" ]; then
+      if [ -n "${my_varNAM:+1}" ]; then
+        if [ "`toLOWER "${var_names[${ivar}]}"`" = "`toLOWER "${my_varNAM}"`" ]; then
+          varNAM="${var_names[${ivar}]}"
+        fi
+      else
+        for chk_var in ${chk_vNAM}
+        do
+          if [ "`toLOWER "${var_names[${ivar}]}"`" = "${chk_var}" ]; then
+            varNAM="${var_names[${ivar}]}"
+            break
+          fi
+        done
+      fi
+    fi
+
+    [ -n "${lonNAM:+1}" -a -n "${latNAM:+1}" -a -n "${varNAM:+1}" ] && break
+  done
+
+  if [ -z "${varNAM}" ]; then
+    procError "could not find the required variable in the input file:" \
+              "INP FILE = ${inp_file}" \
+              "VARS IN FILE: ${var_names[*]}" \
+              "SEARCHED FOR: ${my_varNAM:+${my_varNAM}}${my_varNAM:=${chk_vNAM}}"
+  fi
+  ########################
+
+
+  ########################
+  # Create the grid file to be used with the CDO command
+ if [ -n "${lonNAM:+1}" -a -n "${latNAM:+1}" ]; then
+   grid_file="${out_file%.*}-cdo_grid.txt"
+   weight_file="${out_file%.*}-cdo_weight.nc"
+   [ -f "${grid_file}" ] && rm -f "${grid_file}"
+
+   ##### Work on the "Longitude" variable
+   dim_lon=( `ncdf_getVarDims "${inp_file}" "${lonNAM}"` )
+   if [ ${#dim_lon[@]} -eq 0 ]; then
+     procError "error determining the dimensions of \"${lonNAM}\"" \
+               "cannot continue with the calculations"
+   fi
+
+   nlons=${dim_lon[0]}
+   nlons1=$(( ${nlons} - 1 ))
+   min_lon="`ncdf_getVarMin "${inp_file}" "${lonNAM}"`"
+   max_lon="`ncdf_getVarMax "${inp_file}" "${lonNAM}"`"
+   dlon="`echo "scale=5; (${max_lon} - ${min_lon}) / ${nlons1}" | bc -ql 2>/dev/null`"
+
+   ##### Work on the "Latitude" variable
+   dim_lat=( `ncdf_getVarDims "${inp_file}" "${latNAM}"` )
+   if [ ${#dim_lat[@]} -eq 0 ]; then
+     procError "error determining the dimensions of \"${latNAM}\"" \
+               "cannot continue with the calculations"
+   fi
+
+   nlats=${dim_lat[0]}
+   [ ${#dim_lat[@]} -gt 1 ] && nlats=${dim_lat[1]}
+   nlats1=$(( ${nlats} - 1 ))
+   min_lat="`ncdf_getVarMin "${inp_file}" "${latNAM}"`"
+   max_lat="`ncdf_getVarMax "${inp_file}" "${latNAM}"`"
+   dlat="`echo "scale=6; (${max_lat} - ${min_lat}) / ${nlats1}" | bc -ql 2>/dev/null`"
+
+   ##### Create the grid file
+   ngrd=$(( ${nlons} * ${nlats} ))
+   echo "gridtype = lonlat"      >> ${grid_file}
+   echo "gridsize = ${ngrd}"     >> ${grid_file}
+   echo "xsize    = ${nlons}"    >> ${grid_file}
+   echo "ysize    = ${nlats}"    >> ${grid_file}
+   echo "xfirst   = ${min_lon}"  >> ${grid_file}
+   echo "xinc     = ${dlon}"     >> ${grid_file}
+   echo "yfirst   = ${min_lat}"  >> ${grid_file}
+   echo "yinc     = ${dlat}"     >> ${grid_file}
+ fi
+  ########################
+
+
+  ########################
+  # Get only the surface temperature and convert it to K from Celcius
+  # and output the result to a NetCDF file
+  [ -f ${out_file} ] && rm -f ${out_file}
+  ${CDO} -s -f nc copy -selvar,${varNAM} -sellevel,0 ${inp_file} ${out_file} 2>/dev/null
+  if [ $? -ne 0 ]; then
+    procError "error creating ${out_file} using \"${CDO}\"" \
+              "cannot continue with the calculations"
+  fi
+
+  # Convert the above NetCDF file to grib or grib2 formatted file
+  # We use the codes for GRIB1/GRIB2 as defined in Vtable.SST
+  if [ "X${grib_type}" = "Xgrib1" ]; then
+    out_grib="${out_file%.nc}.grb"
+    [ -f ${out_grib} ] && rm -f ${out_grib}
+
+    ${CDO} -s -r -f grb copy -selvar,${varNAM} -sellevel,0 -addc,273.15 \
+           -setcode,11 -setltype,1 ${out_file} ${out_grib}
+    if [ $? -ne 0 ]; then
+      [ -f ${out_grib} ] && rm -f ${out_grib}
+      procError "error creating ${out_grib} using \"${CDO}\"" \
+                "cannot continue with the calculations"
+    fi
+  else
+    out_grib="${out_file%.nc}.grib2"
+    [ -f ${out_grib} ] && rm -f ${out_grib}
+
+    ${CDO} -s -r -f grb2 copy -selvar,${varNAM} -sellevel,0 -addc,273.15 \
+           -setparam,0.0.0 ${out_file} ${out_grib}
+    if [ $? -ne 0 ]; then
+      [ -f ${out_grib} ] && rm -f ${out_grib}
+      procError "error creating ${out_grib} using \"${CDO}\"" \
+                "cannot continue with the calculations"
+    fi
+  fi
+
+  # Remap the grid
+  if [ -f "${grid_file}" ]; then
+    [ -f "${weight_file}" ] && rm -f "${weight_file}"
+    ${CDO} genbil,${grid_file} ${out_grib} ${weight_file}
+    ${CDO} remap,${grid_file},${weight_file} ${out_grib} ${out_grib}_remapped
+    mv -f ${out_grib}_remapped ${out_grib}
+    [ -f "${weight_file}" ] && rm -f "${weight_file}"
+    [ -f "${grid_file}" ] && rm -f "${grid_file}"
+  fi
+
+  # Remove the sst NetCDF file
+  #[ -f "${out_file}" ] && rm -f ${out_file}
+  ########################
+
+  return 0
+}
+############################################################
+
+
+############################################################
+##### IDL FUNCTIONS
+############################################################
+# -------------------------------------------------------
+# ModifyIDLVar()
+# Usage:      ModifyIDLVar file_name var_name var_value
+# Parameters: file_name var_name var_value
+#             file_name: the filename to use
+#             var_name : the name of the variable to modify
+#             var_value: the new value of the variable
+
+# Returns:    NONE
+# Exports:    NONE
+# Echoes:     NONE
+#
+# Modifies the value of a variable in the input idl file.
+# -------------------------------------------------------
+ModifyIDLVar()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local fname vname vvalue
+  local my_val chk_val
+  local xpr1 xpr2
+
+  if [ $# -lt 3 ]; then
+    procError "wrong number of arguments" \
+              "usage: ${nm_func} FileName VarName VarValue"
+  fi
+
+  if [ ! -f "${1}" ]; then
+    procError "need to define a valid filename" \
+              "usage: ${nm_func} fname vname vvalue"
+  fi
+
+  fname="${1}"
+  vname="`strESC "\`echo "${2}" | sed 's/[[:space:]]//g'\`"`"
+  vvalue="`echo "\`strESC "${3}"\`"`"
+
+  chk_val="`echo "${vvalue}" | grep -i '!VALUES.'`"
+
+  my_val="${vvalue}"
+  if ! `isNumber "${my_val}"` && [ -z "${chk_val}" ] ; then
+    my_val="\'${my_val}\'"
+  fi
+  
+  xpr1="^[[:space:]]*${vname}[[:space:]]*=[[:space:]]*"
+  xpr2="${my_val}"
+  sed -i "s/\(${xpr1}\)\(.*\)/\1${xpr2}/gi" ${fname}
+}
+
+# -------------------------------------------------------
+# Modify_IDLVars()
+# Usage:      Modify_IDLVars file_name var_name var_value
+# Returns:    NONE
+# Echoes:     NONE
+#
+# Sets (if found) "var_name" to "var_value" in the file "file_name"
+# using "sed" expressions.
+# -------------------------------------------------------
+Modify_IDLVars()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local file var_name var_val
+  local xpr1 xpr2
+  local -i isSTRING=1
+
+  if [ $# -lt 3 ]; then
+    procError "wrong number of arguments" \
+              "usage: ${nm_func} FileName VarName VarValue"
+  fi
+
+  file="${1}"
+  var_name="`toUPPER "\`echo "${2}" | sed 's/[ \t]//g'\`"`"
+  var_name="`strESC "${var_name}"`"
+
+  var_val="${3}"
+  var_val="`strESC "${var_val}"`"
+
+  if isNumber "${var_val}"; then isSTRING=0; fi
+
+  case "${var_name}" in
+    HYC_ROOTDIR)
+        xpr1='^[ \t]*hyc_rootDIR[ \t]*='
+        if [ ${isSTRING} -gt 0 ]; then
+          xpr2=" \'${var_val}\'"
+        else
+          xpr2=" ${var_val}"
+        fi
+      sed -i "s/\(${xpr1}\)\(.*\)/\1${xpr2}/gi" ${file}
+    ;;
+    HYC_DATADIR)
+        xpr1='^[ \t]*hyc_dataDIR[ \t]*='
+        if [ ${isSTRING} -gt 0 ]; then
+          xpr2=" \'${var_val}\'"
+        else
+          xpr2=" ${var_val}"
+        fi
+      sed -i "s/\(${xpr1}\)\(.*\)/\1${xpr2}/gi" ${file}
+    ;;
+    HYC_OUTDIR)
+        xpr1='^[ \t]*hyc_outDIR[ \t]*='
+        if [ ${isSTRING} -gt 0 ]; then
+          xpr2=" \'${var_val}\'"
+        else
+          xpr2=" ${var_val}"
+        fi
+      sed -i "s/\(${xpr1}\)\(.*\)/\1${xpr2}/gi" ${file}
+    ;;
+    INIT_DATE)
+        xpr1='^[ \t]*INIT_DATE[ \t]*='
+        if [ ${isSTRING} -gt 0 ]; then
+          xpr2=" \'${var_val}\'"
+        else
+          xpr2=" ${var_val}"
+        fi
+      sed -i "s/\(${xpr1}\)\(.*\)/\1${xpr2}/gi" ${file}
+    ;;
+    BEG_DATE)
+        xpr1='^[ \t]*BEG_DATE[ \t]*='
+        if [ ${isSTRING} -gt 0 ]; then
+          xpr2=" \'${var_val}\'"
+        else
+          xpr2=" ${var_val}"
+        fi
+      sed -i "s/\(${xpr1}\)\(.*\)/\1${xpr2}/gi" ${file}
+    ;;
+    END_DATE)
+        xpr1='^[ \t]*END_DATE[ \t]*='
+        if [ ${isSTRING} -gt 0 ]; then
+          xpr2=" \'${var_val}\'"
+        else
+          xpr2=" ${var_val}"
+        fi
+      sed -i "s/\(${xpr1}\)\(.*\)/\1${xpr2}/gi" ${file}
+    ;;
+    DOM_NUMB)
+        xpr1='^[ \t]*DOM_NUMB[ \t]*='
+        if [ ${isSTRING} -gt 0 ]; then
+          xpr2=" \'${var_val}\'"
+        else
+          xpr2=" ${var_val}"
+        fi
+      sed -i "s/\(${xpr1}\)\(.*\)/\1${xpr2}/gi" ${file}
+    ;;
+    USE_PARALLEL)
+        xpr1='^[ \t]*USE_PARALLEL[ \t]*='
+        if [ ${isSTRING} -gt 0 ]; then
+          xpr2=" \'${var_val}\'"
+        else
+          xpr2=" ${var_val}"
+        fi
+      sed -i "s/\(${xpr1}\)\(.*\)/\1${xpr2}/gi" ${file}
+    ;;
+    CONV_PLOTS)
+        xpr1='^[ \t]*CONV_PLOTS[ \t]*='
+        if [ ${isSTRING} -gt 0 ]; then
+          xpr2=" \'${var_val}\'"
+        else
+          xpr2=" ${var_val}"
+        fi
+      sed -i "s/\(${xpr1}\)\(.*\)/\1${xpr2}/gi" ${file}
+    ;;
+    CONV_PROG)
+        xpr1='^[ \t]*CONV_PROG[ \t]*='
+        if [ ${isSTRING} -gt 0 ]; then
+          xpr2=" \'${var_val}\'"
+        else
+          xpr2=" ${var_val}"
+        fi
+      sed -i "s/\(${xpr1}\)\(.*\)/\1${xpr2}/gi" ${file}
+    ;;
+    CONV_GEOM1)
+        xpr1='^[ \t]*CONV_GEOM1[ \t]*='
+        if [ ${isSTRING} -gt 0 ]; then
+          xpr2=" \'${var_val}\'"
+        else
+          xpr2=" ${var_val}"
+        fi
+      sed -i "s/\(${xpr1}\)\(.*\)/\1${xpr2}/gi" ${file}
+    ;;
+    CONV_GEOM2)
+        xpr1='^[ \t]*CONV_GEOM2[ \t]*='
+        if [ ${isSTRING} -gt 0 ]; then
+          xpr2=" \'${var_val}\'"
+        else
+          xpr2=" ${var_val}"
+        fi
+      sed -i "s/\(${xpr1}\)\(.*\)/\1${xpr2}/gi" ${file}
+    ;;
+    PARA_PROG)
+        xpr1='^[ \t]*PARA_PROG[ \t]*='
+        if [ ${isSTRING} -gt 0 ]; then
+          xpr2=" \'${var_val}\'"
+        else
+          xpr2=" ${var_val}"
+        fi
+      sed -i "s/\(${xpr1}\)\(.*\)/\1${xpr2}/gi" ${file}
+    ;;
+    IMG_TYPE)
+        xpr1='^[ \t]*IMG_TYPE[ \t]*='
+        if [ ${isSTRING} -gt 0 ]; then
+          xpr2=" \'${var_val}\'"
+        else
+          xpr2=" ${var_val}"
+        fi
+      sed -i "s/\(${xpr1}\)\(.*\)/\1${xpr2}/gi" ${file}
+    ;;
+    INP_DIR)
+        xpr1='^[ \t]*INP_DIR[ \t]*='
+        if [ ${isSTRING} -gt 0 ]; then
+          xpr2=" \'${var_val}\'"
+        else
+          xpr2=" ${var_val}"
+        fi
+      sed -i "s/\(${xpr1}\)\(.*\)/\1${xpr2}/gi" ${file}
+    ;;
+    OUT_DIR)
+        xpr1='^[ \t]*OUT_DIR[ \t]*='
+        if [ ${isSTRING} -gt 0 ]; then
+          xpr2=" \'${var_val}\'"
+        else
+          xpr2=" ${var_val}"
+        fi
+      sed -i "s/\(${xpr1}\)\(.*\)/\1${xpr2}/gi" ${file}
+    ;;
+    PLOT_VARS)
+        xpr1='^[ \t]*PLOT_VARS[ \t]*='
+        if [ ${isSTRING} -gt 0 ]; then
+          xpr2=" \'${var_val}\'"
+        else
+          xpr2=" ${var_val}"
+        fi
+      sed -i "s/\(${xpr1}\)\(.*\)/\1${xpr2}/gi" ${file}
+    ;;
+    CAST_ROOT)
+        xpr1='^[ \t]*CAST_ROOT[ \t]*='
+        if [ ${isSTRING} -gt 0 ]; then
+          xpr2=" \'${var_val}\'"
+        else
+          xpr2=" ${var_val}"
+        fi
+      sed -i "s/\(${xpr1}\)\(.*\)/\1${xpr2}/gi" ${file}
+    ;;
+    CAST_BATH)
+        xpr1='^[ \t]*CAST_BATH[ \t]*='
+        if [ ${isSTRING} -gt 0 ]; then
+          xpr2=" \'${var_val}\'"
+        else
+          xpr2=" ${var_val}"
+        fi
+      sed -i "s/\(${xpr1}\)\(.*\)/\1${xpr2}/gi" ${file}
+    ;;
+    CAST_PLOTS)
+        xpr1='^[ \t]*CAST_PLOTS[ \t]*='
+        if [ ${isSTRING} -gt 0 ]; then
+          xpr2=" \'${var_val}\'"
+        else
+          xpr2=" ${var_val}"
+        fi
+      sed -i "s/\(${xpr1}\)\(.*\)/\1${xpr2}/gi" ${file}
+    ;;
+    CAST_OUT)
+        xpr1='^[ \t]*CAST_OUT[ \t]*='
+        if [ ${isSTRING} -gt 0 ]; then
+          xpr2=" \'${var_val}\'"
+        else
+          xpr2=" ${var_val}"
+        fi
+      sed -i "s/\(${xpr1}\)\(.*\)/\1${xpr2}/gi" ${file}
+    ;;
+    FCYCLE)
+        xpr1='^[ \t]*FCYCLE[ \t]*='
+        if [ ${isSTRING} -gt 0 ]; then
+          xpr2=" \'${var_val}\'"
+        else
+          xpr2=" ${var_val}"
+        fi
+      sed -i "s/\(${xpr1}\)\(.*\)/\1${xpr2}/gi" ${file}
+    ;;
+    HC_IDXI0)
+        xpr1='^[ \t]*HC_IDXI0[ \t]*='
+        if [ ${isSTRING} -gt 0 ]; then
+          xpr2=" \'${var_val}\'"
+        else
+          xpr2=" ${var_val}"
+        fi
+      sed -i "s/\(${xpr1}\)\(.*\)/\1${xpr2}/gi" ${file}
+    ;;
+    HC_IDXI1)
+        xpr1='^[ \t]*HC_IDXI1[ \t]*='
+        if [ ${isSTRING} -gt 0 ]; then
+          xpr2=" \'${var_val}\'"
+        else
+          xpr2=" ${var_val}"
+        fi
+      sed -i "s/\(${xpr1}\)\(.*\)/\1${xpr2}/gi" ${file}
+    ;;
+    HC_IDXJ0)
+        xpr1='^[ \t]*HC_IDXJ0[ \t]*='
+        if [ ${isSTRING} -gt 0 ]; then
+          xpr2=" \'${var_val}\'"
+        else
+          xpr2=" ${var_val}"
+        fi
+      sed -i "s/\(${xpr1}\)\(.*\)/\1${xpr2}/gi" ${file}
+    ;;
+    HC_IDXJ1)
+        xpr1='^[ \t]*HC_IDXJ1[ \t]*='
+        if [ ${isSTRING} -gt 0 ]; then
+          xpr2=" \'${var_val}\'"
+        else
+          xpr2=" ${var_val}"
+        fi
+      sed -i "s/\(${xpr1}\)\(.*\)/\1${xpr2}/gi" ${file}
+    ;;
+    *)
+      procError "unsupported variable name" \
+                "VarName  = ${2}" \
+                "VarValue = ${3}"
+    ;;
+  esac
+}
+############################################################
+
+
+############################################################
+##### NAMELIST FUNCTIONS (MAINLY FOR WRF/WPS)
+############################################################
+# -------------------------------------------------------
+# getNameListVar()
+# Usage:      getNameListVar file_name var_name [ndoms]
+# Parameters: file_name var_name
+#             file_name  : the filename to use
+#             var_name   : the name of the variable to check
+#             ndoms      : the number of domains (optional)
+# Returns:    1 if there is an error (failure)
+#             0 in any other case (success)
+# Exports:    NONE
+# Echoes:     a string that contains the fields:
+#             var_name numb_of_var_values var_values (up to numb_of_var_values)
+#             upon failure the string will contain the error message
+#
+# Checks for a variable in the input namelist file and returns
+# the string that contains the variable information
+# -------------------------------------------------------
+getNameListVar()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local fname vname ndoms
+  local chkVAR chkVAL tmpVAL
+  local ival nVAL varNAM varVAL
+
+  unset VAR_STRING VAR_VALUE
+
+  if [ $# -lt 2 ]; then
+    procError "need to define the filename and the variable to examine" \
+              "usage: ${nm_func} fname vname"
+  fi
+
+  if [ ! -f "${1}" ]; then
+    procError "need to define a valid filename" \
+              "usage: ${nm_func} fname vname"
+  fi
+
+  fname="${1}"
+  vname="${2}"
+  ndoms="`getPosInteger "${3}"`"
+
+  chkVAR="$(grep -Ei "^[[:space:]]*${vname}[[:space:]]*=" ${fname} 2>/dev/null)"
+
+  if [ -z "${chkVAR}" ]; then
+    echo
+    return 1
+  fi
+
+  varNAM=$( echo "${chkVAR}" | sed -e 's/=.*//g' | \
+            awk '{print $1}' )
+
+  chkVAL=( $( echo "${chkVAR}" | sed -e 's/.*=//g'| \
+             sed -e 's/[=;,]/ /g' ) )
+
+  nVAL=${#chkVAL[@]}
+  if [ -n "${ndoms:+1}" ]; then
+    [ ${ndoms} -le 0 ] && ndoms=1
+    nVAL="`min "${nVAL} ${ndoms}"`"
+  fi
+
+  for (( ival = 0; ival < ${nVAL}; ival++ ))
+  do
+    tmpVAL="$( echo "${chkVAL[${ival}]}" | sed -e "s/[\"\']//g" )"
+    if [ -z "${varVAL}" ]; then
+      varVAL="${tmpVAL}"
+    else
+      varVAL="${varVAL} ${tmpVAL}"
+    fi
+  done
+
+  echo "${varNAM} ${nVAL} ${varVAL}"
+
+  return 0
+}
+
+# -------------------------------------------------------
+# ModifyNameListVar()
+# Usage:      ModifyNameListVar file_name var_name var_value [num_domains]
+# Parameters: file_name var_name var_value [num_domains]
+#             file_name: the filename to use
+#             var_name : the name of the variable to modify
+#             var_value: the new value of the variable
+#             num_domains: repeat the var_value[0] num_domains times
+# NOTE:         If num_domains is defined and it is greater than zero,
+#                 the final value string for the variable is constructed
+#                 by repeating "num_domains" times the first "var_value"
+#               In any other case the final value string for the variable
+#                 is constructed using all elements in the "var_value"
+#                 string
+# Returns:    NONE
+# Exports:    NONE
+# Echoes:     NONE
+#
+# Modifies the value of a variable in the input namelist file.
+# -------------------------------------------------------
+ModifyNameListVar()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local fname vname vvalue ndom
+  local ival my_val valSTR
+  local xpr1 xpr2
+
+  if [ $# -lt 3 ]; then
+    procError "need to define the filename, the variable and its value to modify" \
+              "usage: ${nm_func} fname vname vvalue [ndom]"
+  fi
+
+  if [ ! -f "${1}" ]; then
+    procError "need to define a valid filename" \
+              "usage: ${nm_func} fname vname vvalue [ndom]"
+  fi
+
+  fname="${1}"
+  vname="`strESC "\`echo "${2}" | sed 's/[[:space:]]//g'\`"`"
+  vvalue=( `echo "\`strESC "${3}"\`"` )
+
+  ndom="`getPosInteger "${4}"`"
+  ndom=${ndom:-0}
+
+  # If ndom is defined and it is greater than zero, then
+  # construct the "value" string by repeating "ndom" times the
+  # first vvalue (vvalue[0])
+  if [ ${ndom} -gt 0 ]; then
+    my_val="${vvalue[0]}"
+    if ! `isNumber "${my_val}"` && ! `isLogical "${my_val}"` ; then
+      my_val="\'${my_val}\'"
+    fi
+
+    for ((ival = 0; ival < ${ndom}; ival++))
+    do
+      if [ -z "${valSTR}" ]; then
+        valSTR="${my_val},"
+      else
+        valSTR="${valSTR} ${my_val},"
+      fi
+    done
+  # If ndom is undefined or it is less or equal to zero, then
+  # construct the "value" string from the "vvalue" array
+  else
+    for ((ival = 0; ival < ${#vvalue[@]}; ival++))
+    do
+      my_val="${vvalue[${ival}]}"
+      if ! `isNumber "${my_val}"` && ! `isLogical "${my_val}"` ; then
+        my_val="\'${my_val}\'"
+      fi
+
+      if [ -z "${valSTR}" ]; then
+        valSTR="${my_val},"
+      else
+        valSTR="${valSTR} ${my_val},"
+      fi
+    done
+  fi
+  
+  xpr1="^[[:space:]]*${vname}[[:space:]]*=[[:space:]]*"
+  xpr2="${valSTR}"
+  sed -i "s/\(${xpr1}\)\(.*\)/\1${xpr2}/gi" ${fname}
+}
+############################################################
+
+
+############################################################
+##### PROCESSES FUNCTIONS
+############################################################
+# -------------------------------------------------------
+# dokill()
+# Usage:      dokill ProcessID
+# Parameters: ProcessID (positive integer), the pid of the process
+# Returns:    NONE
+# Echoes:     NONE
+#
+# Kills the parent process and all its children.
+# -------------------------------------------------------
+dokill()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local -i cpid pid
+
+  if [[ $# == 0 ]]; then
+    procError "need to define the ProcessID" \
+              "usage: ${nm_func} ParentID"
+  fi
+
+  for cpid in $(ps -o pid= --ppid $1)
+  do
+    dokill $cpid
+  done
+  echo "killing: $(ps -p $1 -o cmd=)"
+  kill -9 $1 > /dev/null 2>&1
+}
+
+# -------------------------------------------------------
+# getProcPid()
+# Usage:      getProcPid ProcessName
+# Parameters: ProcessName (string), the name of the process
+# Returns:    1 on failure
+#             0 on success
+# Echoes:     the pid of the process
+#
+# Determines the PID of a process.
+# -------------------------------------------------------
+getProcPid()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local -i retval=0
+  local user="$( id -un )" pid
+
+  if [ $# -lt 1 ]; then
+    procError "need to define the ProcessName" \
+              "usage: ${nm_func} ProcessName"
+  fi
+
+  if [ "X${2}" != "X" ]; then
+    user="${2}"
+  fi
+
+  pid="$( ps aux | grep -e "${1}" | grep "^${user}" | grep -v grep | awk '{print $2}' )"
+  [ "X${pid}" = "X" ] && { pid=-1; retval=1; }
+
+  echo -n "${pid}"
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# waitForProcesses()
+# Usage:      waitForProcesses ProcessList [options]
+# Parameters: ProcessList (string), the list of process names
+# Parameters: --sleep=SLEEP (SLEEP: positive integer in seconds)
+# Parameters: --timeout=TIMEOUT (TIMEOUT: positive integer in seconds)
+# Returns:    1 on failure (eg., ProcessList is empty)
+#             0 on success
+# Echoes:     NONE
+#
+# Waits for all processes to complete. If the wait time is greater
+# that TIMEOUT, it kills all processes still running and exits
+# issuing exit 1.
+# -------------------------------------------------------
+waitForProcesses()
+{
+  local processes= proc_str= iproc=
+  local inp_val= echo_char=
+  local user pids ipid opt_opt opt_arg
+  local -i nPROC=999999
+  local -i time_sleep=20 time_out=3600 time_count=0
+  local -i do_echo=0 retval=0
+
+  # ----- Get all the arguments
+  processes="$( echo "${1}" )"
+  [ "X${processes}" = "X" ] && return 1
+
+  while test $# -gt 1; do
+    case "${2}" in
+      --*=*)
+        opt_opt="`echo "${2}" | sed 's/=.*//' | tr '[:upper:]' '[:lower:]'`"
+        opt_arg="`echo "${2}" | sed 's/.*=//'`"
+        ;;
+      *)
+        opt_opt="`echo "${2}" | tr '[:upper:]' '[:lower:]'`"
+        opt_arg="${opt_opt}"
+        ;;
+    esac
+
+    case "${opt_opt}" in
+      --sleep)
+          opt_arg=$( echo "${opt_arg}" | sed -e 's/[ \t]//g' )
+          if [ "X${opt_arg}" != "X" ]; then
+            inp_val="$( getPosInteger "${opt_arg}" )"
+            time_sleep="${inp_val:-${time_sleep}}"
+          fi
+        ;;
+      --timeout)
+          opt_arg=$( echo "${opt_arg}" | sed -e 's/[ \t]//g' )
+          if [ "X${opt_arg}" != "X" ]; then
+            inp_val="$( getPosInteger "${opt_arg}" )"
+            time_out="${inp_val:-${time_out}}"
+          fi
+        ;;
+      --user)
+          opt_arg=$( echo "${opt_arg}" | sed -e 's/[ \t]//g' )
+          if [ "X${opt_arg}" != "X" ]; then
+            user="${opt_arg}"
+          fi
+        ;;
+      --echo)
+          do_echo=1
+        ;;
+      *) ;; # DEFAULT
+    esac
+    shift
+  done
+
+  [ "X${user}" = "X" ] &&  user="$( id -un )"
+
+  # ----- Start the calculations
+  for i in ${processes}
+  do
+    proc_str="${proc_str}${i}|"
+  done
+  proc_str=$( echo "${proc_str}" | sed 's/[|]*$//' )
+
+  while [ ${nPROC} -ne 0 ]
+  do
+    if [ ${time_count} -gt ${time_out} ]; then
+      echo
+      echo "ERROR:: waitForProcesses: Time out exceeded (${time_out})."
+
+      iproc=
+      for iproc in ${processes}
+      do
+        if [ $( ps aux | grep -v grep | grep "^${user}" | egrep -c "${iproc}" ) -ne 0 ]; then
+          if [ "X${iproc}" != "X" ]; then
+            echo "        killing process: ${iproc:-UNDEF}"
+            pids="$( getProcPid "${iproc}" "${user}" )"
+            for ipid in ${pids} ; do dokill "${ipid}" ; done
+          fi
+        fi
+      done
+      echo "        Exiting now ..."
+      echo -n
+      exit 1
+    fi
+
+    nPROC=$( ps aux | grep -v grep | grep "^${user}" | egrep -c "${proc_str}" )
+    
+    if [ ${nPROC} -ne 0 ]; then
+      if [ ${do_echo} -gt 0 ]; then
+        echo_char="#"
+        echo -n ${echo_char}
+       fi
+      time_count=$(( time_count + time_sleep ))
+      sleep ${time_sleep}
+    fi
+  done
+  [ -n "${echo_char:+1}" ] && echo
+
+  return 0
+}
+############################################################

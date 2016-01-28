@@ -1,0 +1,542 @@
+#! /usr/bin/python
+#
+# fortnml
+#
+# ------------------------------------------------------------------------
+# Copyleft 2009, Jesus Fernandez <jesusff IN THE DOMAIN gmail DOT com>
+#
+# Santader Meteorology Group, Universidad de Cantabria, Spain
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+# ------------------------------------------------------------------------
+
+import sys
+
+def listify(item):
+  if type(item) == type([]):
+    return item
+  else:
+    return [item,]
+
+def math_expansion(expr):
+  try:
+    exec("rval=%s" % expr)
+    return "%s" % rval
+  except:
+    return expr
+
+def coerce_value_list(vlist):
+  vlist = map(math_expansion, vlist)
+  try:
+    values=[int(element) for element in vlist]
+  except ValueError:
+    try:
+      values=[float(element) for element in vlist]
+    except ValueError:
+      values=[value.strip() for value in vlist]
+  return values
+
+class FortranNamelistRecord:
+  def __init__(self, name):
+    self.name = name
+    self.data = {}
+    self.ordered_keys = []
+  def setValue(self, variable, value):
+    self.data[variable] = listify(value)
+    if not variable in self.ordered_keys:
+      self.ordered_keys.append(variable)
+  def delVariable(self, variable):
+    if variable in self.ordered_keys:
+      del self.data[variable]
+      self.ordered_keys.remove(variable)
+  def appendValue(self, variable, value):
+    if not variable in self.ordered_keys:
+      self.ordered_keys.append(variable)
+      self.data[variable]=[]
+    self.data[variable].extend(listify(value))
+  def hasVariable(self, var):
+    return var in self.ordered_keys
+  def __str__(self):
+    rval = "&%s\n" % self.name
+    for key in self.ordered_keys:
+#      thisvar = "  %-24s =" % key
+      thisvar = "  %-28s =" % key
+      for item in self.data[key]:
+        if type(item) == type("hello"):
+          if not item.startswith("'") and not item.startswith("."):
+            item = "'%s'" % item
+        if len(thisvar) < 75:
+          thisvar += " %s," % item
+        else:
+          rval += "%s\n" % thisvar
+#          thisvar = 28*" "+" %s," % item
+          thisvar = 32*" "+" %s," % item
+      rval += "%s\n" % thisvar
+    rval += "/\n"
+    return rval
+  def __getitem__(self, item):
+    return self.data[item]
+
+class FortranNamelist:
+  def __init__(self, namelist_file):
+    """read contents of namelist file and return dictionary containing all options
+    
+    Created 20/01/08 by Thom Chubb.
+    Modified 20/01/08 by Thom Chubb and Valerio Bisignesi
+    Modified 20/05/09 by Jesus Fernandez 
+      Implemented as a class
+      Added support for multi-line variables
+    """
+    self.namelist_file = namelist_file
+    fid=open(namelist_file, 'r')
+    data = fid.readlines()
+    fid.close()
+    self.record_dict={}
+    self.ordered_records=[]
+    for line in data:
+      if '&' in line:
+        # Then this line is a namelist title
+        is_comment=False
+        current_label = line.strip().lstrip('&')
+        current_label = current_label.lower()
+        self.record_dict[current_label] = FortranNamelistRecord(current_label)
+        if not current_label in self.ordered_records:
+          self.ordered_records.append(current_label)
+      elif line.strip() == "/":
+        # Then lines following this are comments until the next '&'
+        is_comment=True
+      elif '=' in line:
+        # Then this line contains variable information to be stored
+        if not is_comment:
+          variable,values = line.split('=')
+          variable = variable.lower()
+          values = values.strip().rstrip(',')
+          if values.startswith("'") and values.endswith("'") and not "'" in values[1:-1]:
+            # This is a single string with comma-separated values. Do not interpret it as 
+            # as comma-separated strings.
+            values = values[1:-1]
+          else:
+            values = coerce_value_list(values.split(','))
+          self.record_dict[current_label].setValue(variable.strip(), values)
+      else:
+        if not is_comment:
+          # This line contains variable information to be added to the last variable read
+          values = line.strip().rstrip(',')
+          values = coerce_value_list(values.split(','))
+          self.record_dict[current_label].appendValue(variable.strip(), values)
+  def __getitem__(self, item):
+    return self.record_dict[item]
+  def printNamelist(self, record=None):
+    rval = ""
+    if record:
+      rval += "%s\n" % str(self.record_dict[record])
+    else:  
+      for rec in self.ordered_records:
+        rval += "%s\n" % str(self.record_dict[rec])
+    return rval
+  def setValue(self, variable, value, record=""):
+    if record:
+      if not self.record_dict.has_key(record):
+        self.record_dict[record] = FortranNamelistRecord(record)
+        if not record in self.ordered_records:
+          self.ordered_records.append(record)
+      self[record].setValue(variable, value)
+    else:
+      gotit=False
+      for rec in self.ordered_records:
+        if self[rec].hasVariable(variable):
+          self[rec].setValue(variable, value)
+          gotit=True
+          break
+      if not gotit:
+        raise KeyError, "The variable '%s' was not found and no record was specified!" % variable
+  def getValue(self, variable, record=""):
+    if record:
+      return self[record][variable]
+    else:
+      gotit=False
+      for rec in self.ordered_records:
+        if self[rec].hasVariable(variable):
+          return self[rec][variable]
+          gotit=True
+          break
+      if not gotit:
+        raise KeyError, "The variable '%s' was not found." % variable
+  def hasVariable(self, variable, record=""):
+    if record:
+      return self[record].hasVariable(variable)
+    else:
+      rval = False
+      for rec in self.ordered_records:
+        if self[rec].hasVariable(variable):
+          rval = True
+          break
+      return rval
+  def variableList(self):
+    rval = []
+    for rec in self.ordered_records:
+      rval.extend(self[rec].ordered_keys)
+    return rval
+  def appendValue(self, variable, value, record=""):
+    if record:
+      self[record].appendValue(variable, value)
+    else:
+      gotit=False
+      for rec in self.ordered_records:
+        if self[rec].hasVariable(variable):
+          self[rec].appendValue(variable, value)
+          gotit = True
+          break
+      if not gotit:
+        raise KeyError, "The variable '%s' was not found and no record was specified!" % variable
+  def delVariable(self, variable, record=""):
+    if record:
+      self[record].delVariable(variable)
+    else:
+      for rec in self.ordered_records:
+        if self[rec].hasVariable(variable):
+          self[rec].delVariable(variable)
+          break
+  def overWriteNamelist(self):
+    fid = open(self.namelist_file, 'w')
+    fid.write(self.printNamelist())
+    fid.close()
+
+class WrfNamelist(FortranNamelist):
+  # Get an updated list for your WRF version with:
+  # grep '^rconfig' Registry |awk '$5=="max_domains"{printf "  %s,\n", tolower($8)}' | sort | uniq
+  MAX_DOM_VARIABLES = [
+    "aer_aerodynres_opt", "aer_bc_opt", "aerchem_onoff",
+    "aer_drydep_opt", "aer_ic_opt", "aer_op_opt",
+    "aer_ra_feedback", "aircraft_emiss_opt", "allowed",
+    "bdyfrq", "bioemdt", "bio_emiss_opt",
+    "biomass_burn_opt", "biomass_emiss_opt", "bldt",
+    "bl_pbl_physics", "cellcount_method", "cen_lat",
+    "cen_lon", "chem_adv_opt", "chem_conv_opt",
+    "chemdt", "chem_in_opt", "chem_opt",
+    "c_k", "cldchem_onoff", "coac",
+    "codamp", "conv_tr_aqchem_opt", "conv_tr_wetscav_opt",
+    "coriolis2d", "c_s", "cu_diag",
+    "cudt", "cu_physics", "cycle_x",
+    "cycle_y", "dampcoef", "days",
+    "delt_perturbation", "dfi_stage", "diagnostic_chem",
+    "diff_6th_factor", "diff_6th_opt", "do_avgflx_cugd",
+    "do_avgflx_em", "do_coriolis", "do_curvature",
+    "do_gradp", "dt", "dveg",
+    "dx", "dy", "emdiv",
+    "emifrq", "emiss_inpt_opt", "emiss_opt",
+    "emiss_opt_vol", "end_day", "end_hour",
+    "end_minute", "end_month", "end_second",
+    "end_year", "epssm", "e_sn",
+    "e_vert", "e_we", "fdda_end",
+    "fdda_start", "fgdt", "fgdtzero",
+    "fine_input_stream", "fire_advection", "fire_atm_feedback",
+    "fire_back_weight", "fire_boundary_guard", "fire_const_grnhfx",
+    "fire_const_grnqfx", "fire_const_time", "fire_crwn_hgt",
+    "fire_ext_crwn", "fire_ext_grnd", "fire_fuel_cat",
+    "fire_fuel_left_irl", "fire_fuel_left_jrl", "fire_fuel_left_method",
+    "fire_fuel_read", "fire_grows_only", "fire_ignition_end_lat1",
+    "fire_ignition_end_lat2", "fire_ignition_end_lat3", "fire_ignition_end_lat4",
+    "fire_ignition_end_lat5", "fire_ignition_end_long1", "fire_ignition_end_long2",
+    "fire_ignition_end_long3", "fire_ignition_end_long4", "fire_ignition_end_long5",
+    "fire_ignition_end_time1", "fire_ignition_end_time2", "fire_ignition_end_time3",
+    "fire_ignition_end_time4", "fire_ignition_end_time5", "fire_ignition_end_x1",
+    "fire_ignition_end_x2", "fire_ignition_end_x3", "fire_ignition_end_x4",
+    "fire_ignition_end_x5", "fire_ignition_end_y1", "fire_ignition_end_y2",
+    "fire_ignition_end_y3", "fire_ignition_end_y4", "fire_ignition_end_y5",
+    "fire_ignition_radius1", "fire_ignition_radius2", "fire_ignition_radius3",
+    "fire_ignition_radius4", "fire_ignition_radius5", "fire_ignition_ros1",
+    "fire_ignition_start_lat1", "fire_ignition_start_lat2", "fire_ignition_start_lat3",
+    "fire_ignition_start_lat4", "fire_ignition_start_lat5", "fire_ignition_start_long1",
+    "fire_ignition_start_long2", "fire_ignition_start_long3", "fire_ignition_start_long4",
+    "fire_ignition_start_long5", "fire_ignition_start_time1", "fire_ignition_start_time2",
+    "fire_ignition_start_time3", "fire_ignition_start_time4", "fire_ignition_start_time5",
+    "fire_ignition_start_x1", "fire_ignition_start_x2", "fire_ignition_start_x3",
+    "fire_ignition_start_x4", "fire_ignition_start_x5", "fire_ignition_start_y1",
+    "fire_ignition_start_y2", "fire_ignition_start_y3", "fire_ignition_start_y4",
+    "fire_ignition_start_y5", "fire_ign_time", "fire_lat_init",
+    "fire_lfn_ext_up", "fire_lon_init", "fire_mountain_end_x",
+    "fire_mountain_end_y", "fire_mountain_height", "fire_mountain_start_x",
+    "fire_mountain_start_y", "fire_mountain_type", "fire_num_ignitions",
+    "fire_read_atm_grad", "fire_read_atm_ht", "fire_read_fire_grad",
+    "fire_read_fire_ht", "fire_read_lu", "fire_read_tmn",
+    "fire_read_tsk", "fire_shape", "fire_sprd_mdl",
+    "fire_test_steps", "fire_topo_from_atm", "fire_upwinding",
+    "fire_upwind_split", "fire_viscosity", "fire_wind_height",
+    "fire_write_file", "fire_write_msg", "fixed_upper_bc",
+    "flashrate_factor", "flashrate_method", "frames_per_outfile",
+    "gas_bc_opt", "gaschem_onoff", "gas_drydep_opt",
+    "gas_ic_opt", "gfdda_begin_d", "gfdda_begin_h",
+    "gfdda_begin_m", "gfdda_begin_s", "gfdda_begin_y",
+    "gfdda_end_d", "gfdda_end_h", "gfdda_end_m",
+    "gfdda_end_s", "gfdda_end_y", "gfdda_interval",
+    "gfdda_interval_d", "gfdda_interval_h", "gfdda_interval_m",
+    "gfdda_interval_s", "gfdda_interval_y", "gmt",
+    "grav_settling", "grid_fdda", "gsmdt",
+    "gwd_opt", "have_bcs_chem", "have_bcs_tracer",
+    "have_bcs_upper", "hght_perturbation", "history_begin",
+    "history_begin_d", "history_begin_h", "history_begin_m",
+    "history_begin_s", "history_begin_y", "history_end",
+    "history_end_d", "history_end_h", "history_end_m",
+    "history_end_s", "history_end_y", "history_interval",
+    "history_interval_d", "history_interval_h", "history_interval_m",
+    "history_interval_s", "h_mom_adv_order", "h_sca_adv_order",
+    "iccg_method", "id", "idtad",
+    "input_from_file", "input_from_hires", "inputout_begin_d",
+    "inputout_begin_h", "inputout_begin_m", "inputout_begin_s",
+    "inputout_begin_y", "inputout_end_d", "inputout_end_h",
+    "inputout_end_m", "inputout_end_s", "inputout_end_y",
+    "inputout_interval", "inputout_interval_d", "inputout_interval_h",
+    "inputout_interval_m", "inputout_interval_s", "i_parent_start",
+    "isice", "islake", "isoilwater",
+    "isurban", "iswater", "j_parent_start",
+    "julday", "julyr", "khdif",
+    "kvdif", "lightning_opt", "lightning_start_seconds",
+    "lightning_time_step", "map_proj", "max_step_increase_pct",
+    "max_time_step", "mfshconv", "min_time_step",
+    "mix_full_field", "mix_isotropic", "mix_upper_bound",
+    "moad_cen_lat", "moad_grid_ratio", "moad_time_step_ratio",
+    "moist_adv_dfi_opt", "moist_adv_opt", "momentum_adv_opt",
+    "mp_physics", "mp_physics_4dvar", "mp_physics_dfi",
+    "naer", "n_cg", "ncnvc",
+    "nested", "n_ic", "non_hydrostatic",
+    "nphs", "nradl", "nrads",
+    "nrand", "nsoil", "obs_coef_mois",
+    "obs_coef_pstr", "obs_coef_temp", "obs_coef_wind",
+    "obs_ionf", "obs_no_pbl_nudge_q", "obs_no_pbl_nudge_t",
+    "obs_no_pbl_nudge_uv", "obs_nudge_mois", "obs_nudge_opt",
+    "obs_nudge_pstr", "obs_nudge_temp", "obs_nudge_wind",
+    "obs_prt_freq", "obs_rinxy", "obs_twindo",
+    "open_xe", "open_xs", "open_ye",
+    "open_ys", "opt_alb", "opt_btr",
+    "opt_crs", "opt_frz", "opt_inf",
+    "opt_rad", "opt_run", "opt_sfc",
+    "opt_snf", "opt_stc", "opt_tbot",
+    "parent_grid_ratio", "parent_id", "parent_time_step_ratio",
+    "passive_ltng", "pcpflg", "periodic_x",
+    "periodic_y", "pert_coriolis", "photdt",
+    "phot_opt", "plumerisefire_frq", "polar",
+    "pole_lat", "pole_lon", "prec_acc_dt",
+    "progn", "pxlsm_smois_init", "pxlsm_soil_nudge",
+    "radt", "ra_lw_physics", "random_seed",
+    "ra_sw_physics", "sas_mass_flux", "sas_pgcon",
+    "sas_shal_conv", "sas_shal_pgcon", "sbd0",
+    "scalar_adv_opt", "scale_fire_emiss", "sfc_canwat",
+    "sfc_full_init", "sfc_isltyp", "sfc_ivgtyp",
+    "sfc_lu_index", "sfc_tmn", "sfc_tsk",
+    "sfc_vegfra", "sf_sfclay_physics", "sf_surface_physics",
+    "sf_urban_physics", "sgfdda_begin_d", "sgfdda_begin_h",
+    "sgfdda_begin_m", "sgfdda_begin_s", "sgfdda_begin_y",
+    "sgfdda_end_d", "sgfdda_end_h", "sgfdda_end_m",
+    "sgfdda_end_s", "sgfdda_end_y", "sgfdda_interval",
+    "sgfdda_interval_d", "sgfdda_interval_h", "sgfdda_interval_m",
+    "sgfdda_interval_s", "sgfdda_interval_y", "shcu_physics",
+    "sigma", "slope_rad", "slophc",
+    "smdiv", "specified", "s_sn",
+    "stand_lon", "start_day", "start_hour",
+    "starting_time_step", "start_minute", "start_month",
+    "start_second", "start_year", "stencil_half_width",
+    "stretch_grd", "stretch_hyp", "s_vert",
+    "swap_x", "swap_y", "s_we",
+    "symmetric_xe", "symmetric_xs", "symmetric_ye",
+    "symmetric_ys", "target_cfl", "target_hcfl",
+    "tclod", "temp_lower", "temp_upper",
+    "theat", "time_step_sound", "tke_adv_opt",
+    "tke_drag_coefficient", "tke_heat_flux", "tke_upper_bound",
+    "top_lid", "topo_shading", "topo_wind",
+    "top_radiation", "tprec", "tracer_adv_opt",
+    "tracer_opt", "trdlw", "trdsw",
+    "true_lat1", "true_lat2", "tsrfc",
+    "tstart", "vertmix_onoff", "v_mom_adv_order",
+    "vortex_tracker", "v_sca_adv_order", "wbd0",
+    "wetscav_onoff", "wp", "xrad_perturbation",
+    "yrad_perturbation", "zdamp", "z_grd_scale",
+    "zrad_perturbation", "ztop",
+  ]
+  def __init__(self, namelist_file):
+    FortranNamelist.__init__(self, namelist_file)
+  def setMaxDomValue(self, variable, value, record=""):
+    mxd = self['domains']['max_dom'][0]
+    if record:
+      self[record].setValue(variable, coerce_value_list(mxd*[value,]))
+    else:
+      gotit=False
+      for rec in self.ordered_records:
+        if self[rec].hasVariable(variable):
+          self[rec].setValue(variable, coerce_value_list(mxd*[value,]))
+          gotit=True
+          break
+      if not gotit:
+        raise KeyError, "The variable was not found and no record was specified!"
+  def trimMaxDom(self):
+    mxd = self['domains']['max_dom'][0]
+    for var in self.variableList():
+      if var in self.MAX_DOM_VARIABLES:
+        self.setValue(var, self.getValue(var)[:mxd])
+  def printWrfWarning(self, message):
+    sys.stderr.write("WRF Check Warning: %s\n" % message)
+  def wrfCheck(self):
+    """
+    Check for some recomendations/mandatory WRF specific issues in the namelist.
+    """
+    tsratio = self.getValue('time_step')[0] * 1000 / self.getValue('dx')[0]
+    if   tsratio > 6: self.printWrfWarning("Time step is larger than 6 times dx (%f)" % tsratio)
+    elif tsratio < 5: self.printWrfWarning("Time step is shorter than 5 times dx (%f)" % tsratio)
+    raratio = self.getValue('radt')[0] * 1000 / self.getValue('dx')[0]
+    if   raratio > 1.1: self.printWrfWarning("radt is larger than dx (%f)" % raratio)
+    if   raratio < 0.9: self.printWrfWarning("radt is shorter than dx (%f)" % raratio)
+    #
+    # SST update
+    #
+    if self.hasVariable('sst_update', 'physics'):
+      if self.getValue('sst_update','physics')[0] == 1 and not self.hasVariable('auxinput4_inname', 'time_control'):
+         self.printWrfWarning("sst_update enabled but auxinput4_inname not defined! Fixing... (check interval!)")
+         self['time_control'].setValue('auxinput4_inname', "wrflowinp_d<domain>")
+         self['time_control'].setValue('io_form_auxinput4', 2)
+         self['time_control'].setValue('auxinput4_end_h', 0)
+         self.setMaxDomValue('auxinput4_interval', 360, 'time_control')
+    #
+    # CAM radiation
+    #
+    if self.getValue('ra_lw_physics')[0] == 3 and not self.hasVariable('paerlev', 'physics'):
+      self.printWrfWarning('CAM radiation selected but paerlev/levsiz/cam_abs_dim1/cam_abs_dim2 was not set. Fixing...')
+      self['physics'].setValue('paerlev', 29)
+      self['physics'].setValue('levsiz', 59)
+      self['physics'].setValue('cam_abs_dim1', 4)
+      self['physics'].setValue('cam_abs_dim2', self.getValue('e_vert')[0])
+    if self.getValue('ra_lw_physics')[0] == 3 and self.getValue('cam_abs_dim2')[0]!=self.getValue('e_vert')[0]:
+      self.printWrfWarning('cam_abs_dim2 not set to e_vert. Fixing...')
+      self['physics'].setValue('cam_abs_dim2', self.getValue('e_vert')[0])
+    #
+    # PBL issues
+    #
+    if self.getValue('bl_pbl_physics')[0] == 1 and self.getValue('sf_sfclay_physics')[0] != 1:
+      self.printWrfWarning('YSU PBL selected but the surface layer selected is not 1. Fixing...')
+      self['physics'].setValue('sf_sfclay_physics', 1)
+    #
+    # LSM issues
+    #
+    if self.getValue('sf_surface_physics')[0] == 7 and self.getValue('num_soil_layers')[0] != 2:
+      self.printWrfWarning('Pleim Xiu LSM selected but the soil levels are not 2. Fixing...')
+      self['physics'].setValue('num_soil_layers', 2)
+    if self.getValue('sf_surface_physics')[0] == 3 and self.getValue('num_soil_layers')[0] != 6:
+      self.printWrfWarning('RUC LSM selected but the soil levels are not 6. Fixing...')
+      self['physics'].setValue('num_soil_layers', 6)
+    if self.getValue('sf_surface_physics')[0] == 2 and self.getValue('num_soil_layers')[0] != 4:
+      self.printWrfWarning('Noah LSM selected but the soil levels are not 4. Fixing...')
+      self['physics'].setValue('num_soil_layers', 4)
+    if self.getValue('sf_surface_physics')[0] == 1 and self.getValue('num_soil_layers')[0] != 5:
+      self.printWrfWarning('Simple soil selected but the soil levels are not 5. Fixing...')
+      self['physics'].setValue('num_soil_layers', 5)
+
+
+if __name__ == "__main__":
+  from optparse import OptionParser
+  def splitvar(varopt):
+    if '@' in varopt:
+      return varopt.split('@')
+    else:
+      return varopt, ""
+  parser = OptionParser()
+  parser.add_option(
+    "-f", "--file", dest="namelist",
+    help="Namelist file", metavar="NAMELIST"
+  )
+  parser.set_defaults(
+    quiet=False, wrf=False, overwrite=False, trim=False,
+    variable_a="", variable_s="", variable_m="", variable_d="",nitems=0
+  )
+  parser.add_option(
+    "-q", "--quiet", action="store_true",
+    help="Don't dump the namelist to stdout"
+  )
+  parser.add_option(
+    "-w", "--wrf", action="store_true", default=False,
+    help="WRF namelist.input parse mode"
+  )
+  parser.add_option(
+    "-a", "--append", metavar="VARIABLE[@RECORD]", dest="variable_a",
+    help="Append the provided values to this namelist entry. A specific record can be specified through variable@record syntax"
+  )
+  parser.add_option(
+    "-r", "--record", metavar="RECORD", dest="thisrecord",
+    help="Dump only the selected RECORD"
+  )
+  parser.add_option(
+    "-s", "--set", metavar="VARIABLE[@RECORD]", dest="variable_s",
+    help="Set the provided values to this namelist entry. A specific record can be specified through variable@record syntax"
+  )
+  parser.add_option(
+    "-m", "--max-dom", metavar="VARIABLE[@RECORD]", dest="variable_m",
+    help="Set the provided (single) value to this namelist entry as many times as the max_dom@domains specifies. WRF mode (--wrf) implied even if not set"
+  )
+  parser.add_option(
+    "-n", metavar="NITEMS", dest="nitems", type='int',
+    help="Repeat the value provided NITEMS times. Only used when in set (-s) or append (-a) mode"
+  )
+  parser.add_option(
+    "-d", "--delete", metavar="VARIABLE[@RECORD]", dest="variable_d",
+    help="Delete a VARIABLE. The record can be specified through the VARIABLE@RECORD syntax"
+  )
+  parser.add_option(
+    "-o", "--overwrite", action="store_true",
+    help="Overwrite the provided namelist with the result"
+  )
+  parser.add_option(
+    "-t", "--trim", action="store_true",
+    help="Trim the length of the array variables to the maximum number of domains"
+  )
+  (opt, args) = parser.parse_args()
+
+  if not opt.namelist:
+    sys.stderr.write("Missing namelist argument!")
+    sys.exit()
+  if (opt.variable_s or opt.variable_a or opt.variable_m) and not args:
+    sys.stderr.write("Missing values to set/append!")
+    sys.exit()
+  if opt.variable_m or opt.trim:
+    opt.wrf = True
+  if opt.wrf:
+    nml = WrfNamelist(opt.namelist)
+  else:
+    nml = FortranNamelist(opt.namelist)
+
+  if opt.variable_s:
+    variable, record = splitvar(opt.variable_s)
+    if opt.nitems:
+      args = [args[0] for i in range(opt.nitems)]
+    nml.setValue(variable, coerce_value_list(args), record)
+  elif opt.variable_a:
+    variable, record = splitvar(opt.variable_a)
+    if opt.nitems:
+      args = [args[0] for i in range(opt.nitems)]
+    nml.appendValue(variable, coerce_value_list(args), record)
+  elif opt.variable_m:
+    variable, record = splitvar(opt.variable_m)
+    nml.setMaxDomValue(variable, args[0], record)
+  elif opt.variable_d:
+    variable, record = splitvar(opt.variable_d)
+    nml.delVariable(variable, record)
+
+  if opt.trim:
+    nml.trimMaxDom()
+  if opt.wrf:
+    nml.wrfCheck()
+  if opt.overwrite:
+    nml.overWriteNamelist()
+  elif not opt.quiet:
+    if opt.thisrecord:
+      print nml.printNamelist(opt.thisrecord)
+    else:
+      print nml.printNamelist()

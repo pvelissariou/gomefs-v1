@@ -1,0 +1,307 @@
+; PROGRAM :: Make_toGeo-Wrf
+;   Creates the WRF output files where the data are georeferenced
+;   to WGS84 ellipsoid
+
+;*******************************************************************************
+; START THE MAIN PROGRAM
+;*******************************************************************************
+
+;*******************************************************************************
+PRO NameAtts_Wrf, var_name, long_name, standard_name
+
+  Compile_Opt HIDDEN, IDL2
+
+  On_Error, 2
+
+  if ( size(var_name, /TNAME) ne 'STRING' ) then $
+    message, "<var_name> should be a string."
+
+  case 1 of
+    (strmatch(var_name, 'GLW', /FOLD_CASE) eq 1): $
+      begin
+        long_name     = 'Downward long wave flux at ground surface'
+        standard_name = 'surface_downwelling_longwave_flux'
+      end
+    (strmatch(var_name, 'GSW', /FOLD_CASE) eq 1): $
+      begin
+        long_name     = 'Net short wave flux at ground surface'
+        standard_name = 'surface_net_shortwave_flux'
+      end
+    (strmatch(var_name, 'HFX', /FOLD_CASE) eq 1): $
+      begin
+        long_name     = 'Sensible heat flux at the surface'
+        standard_name = 'surface_upward_sensible_heat_flux'
+      end
+    (strmatch(var_name, 'LH', /FOLD_CASE) eq 1): $
+      begin
+        long_name     = 'Latent heat flux at the surface'
+        standard_name = 'surface_latent_heat_flux'
+      end
+    (strmatch(var_name, 'PMSL', /FOLD_CASE) eq 1): $
+      begin
+        long_name     = 'Sea-Level Pressure'
+        standard_name = 'air_pressure_at_sea_level'
+      end
+    (strmatch(var_name, 'PSFC', /FOLD_CASE) eq 1): $
+      begin
+        long_name     = 'Pressure at the Surface'
+        standard_name = 'surface_air_pressure'
+      end
+    (strmatch(var_name, 'RAINC', /FOLD_CASE) eq 1): $
+      begin
+        long_name     = 'Accumulated total cumulus precipitation'
+        standard_name = 'convective_precipitation_amount'
+      end
+    (strmatch(var_name, 'RAINNC', /FOLD_CASE) eq 1): $
+      begin
+        long_name     = 'Accumulated total grid scale precipitation'
+        standard_name = 'large_scale_precipitation_amount'
+      end
+    (strmatch(var_name, 'SST', /FOLD_CASE) eq 1): $
+      begin
+        long_name     = 'Sea-surface temperature'
+        standard_name = 'sea_surface_temperature'
+      end
+    (strmatch(var_name, 'SWDOWN', /FOLD_CASE) eq 1): $
+      begin
+        long_name     = 'Downward short wave flux at ground surface'
+        standard_name = 'surface_downwelling_shortwave_flux'
+      end
+    (strmatch(var_name, 'T2', /FOLD_CASE) eq 1): $
+      begin
+        long_name     = 'Temperature at 2 m'
+        standard_name = 'air_temperature'
+      end
+    (strmatch(var_name, 'U', /FOLD_CASE) eq 1): $
+      begin
+        long_name     = 'x-wind component'
+        standard_name = 'eastward_air_velocity'
+      end
+    (strmatch(var_name, 'U10', /FOLD_CASE) eq 1): $
+      begin
+        long_name     = 'u-wind component at 10 m '
+        standard_name = 'eastward_wind'
+      end
+    (strmatch(var_name, 'V', /FOLD_CASE) eq 1): $
+      begin
+        long_name     = 'y-wind component'
+        standard_name = 'northward_air_velocity'
+      end
+    (strmatch(var_name, 'V10', /FOLD_CASE) eq 1): $
+      begin
+        long_name     = 'v-wind component at 10 m'
+        standard_name = 'northward_wind'
+      end
+    (strmatch(var_name, 'W', /FOLD_CASE) eq 1): $
+      begin
+        long_name     = 'z-wind component'
+        standard_name = 'upward_air_velocity'
+      end
+    (strmatch(var_name, 'XLAT', /FOLD_CASE) eq 1): $
+      begin
+        long_name     = 'Latitude'
+        standard_name = 'latitude'
+      end
+    (strmatch(var_name, 'XLONG', /FOLD_CASE) eq 1): $
+      begin
+        long_name     = 'Longitude'
+        standard_name = 'longitude'
+      end
+    else: $
+      begin
+        long_name     = ''
+        standard_name = ''
+      end
+  endcase
+end
+;*******************************************************************************
+
+CAST_ROOT  = ''
+CAST_BATH  = ''
+CAST_PLOTS = ''
+CAST_OUT   = ''
+
+
+CPU, TPOOL_NTHREADS = 1
+
+
+idl_ERRCODE = 0
+catch, idl_ERRCODE
+if (idl_ERRCODE ne 0) then begin
+  catch, /cancel
+  help, /LAST_MESSAGE
+  exit,  /NO_CONFIRM, STATUS = idl_ERRCODE
+endif
+
+
+BEG_TIMECOUNT = systime(/seconds)
+
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+; Initialize.
+@proj_setup
+
+REGION = 'Gulf of Mexico'
+
+; ----- begin/end dates for the current simulation
+BEG_DATE = '2010/01/01 00:00:00'
+END_DATE = '2010/01/01 00:00:00'
+
+; ----- DOM_NUMB represents the domain number in the input data
+;       data are stored in one file per domain ('', d01, d02, ...)
+;DOM_NUMB = 0
+DOM_NUMB = 1
+
+dnumber = (n_elements(DOM_NUMB) gt 0) ? fix(DOM_NUMB) : 0
+dom_str = (dnumber gt 0) ? string(dnumber, format = '("_d", i2.2)') : ''
+
+; ----- inpPFX represents the prefix to be used in the input file
+;       outPFX represents the prefix to be used in the output file
+inpPFX  = 'atm_his'
+outPFX  = 'atm_his_geo'
+
+; ----- INP_DIR directory for the input data files
+;       OUT_DIR directory for the output data files
+INP_DIR = rootDIR
+OUT_DIR = rootDIR
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+GetParams, REGION, PlotSize = 1150, Map_Coords = map_coords, $
+           Map_Proj = map_proj
+
+; For the appropriate lake/region to use please check first the file
+; proj_vars.pro and call first the GetParams procedure
+outstr = '/bin/echo -e ' + $
+         '"\n' + String('Running for: ', $
+                        Strupcase(RegionName), format = '(a, 1x, a)') + $
+         '\n" > /dev/stderr'
+Spawn, outstr
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+; Determine the number of requested records and their corresponding timestamps
+TIME_MAX = Get_Dates(BEG_DATE, END_DATE, $
+                     YR_OUT = curYR, MO_OUT = curMO, DA_OUT = curDA, $
+                     HR_OUT = curHR, MN_OUT = curMN, SC_OUT = curSC, $
+                     HR_INTERVALS = indgen(24), $
+                     MN_INTERVALS = [ 0 ], $
+                     YEAR_DAY   = year_day,  $
+                     ROMS_STAMP = wrf_stamp)
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+; Loop through the files found and perform all necessary calculations
+iBEG = 0L
+iEND = TIME_MAX - 1
+
+for ifile = iBEG, iEND do begin
+  curYR_str = strtrim(string(curYR[ifile], format = '(i4.4)'), 2)
+
+  ; ----- Check for the existence of the input file
+  tmp_str = (inpPFX ne '') $
+              ? inpPFX + dom_str + '_' + wrf_stamp[ifile] + '.nc' $
+              : dom_str + wrf_stamp[ifile] + '.nc'
+  inp_file = FilePath(tmp_str, Root_Dir = INP_DIR)
+
+  if (not readFILE(inp_file)) then begin
+   ;print, 'skipping the data input file:' + inp_file
+   continue
+  endif else begin
+    print, 'working on the data input file: ' + inp_file
+  endelse
+
+  ; ----- Set the ROMS output file
+  tmp_str = (outPFX ne '') $
+              ? outPFX + dom_str + '_' + wrf_stamp[ifile] + '.nc' $
+              : dom_str + wrf_stamp[ifile] + '.nc'
+  out_file = FilePath(tmp_str, Root_Dir = OUT_DIR)
+
+
+  ; ----- Create a new ouput netcdf file and write the data in it
+  FILE_DELETE, out_file, /ALLOW_NONEXISTENT
+  FILE_COPY, inp_file, out_file, /OVERWRITE
+
+
+  ;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  ;%%%%% START THE CALCULATIONS
+  ;%%%%% Open the ROMS input file and dynamically write to the output file
+  ;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+  ncid_out = ncdf_open(out_file, /WRITE)
+
+    ncid_out_info = ncdf_inquire(ncid_out)
+
+    ncdf_control, ncid_out, /REDEF
+      for ivar = 0L, ncid_out_info.nvars - 1 do begin
+        var_name = (ncdf_varinq(ncid_out, ivar)).name
+        NameAtts_Wrf, var_name, long_name, standard_name
+        if (strcompress(standard_name, /REMOVE_ALL) ne '') then $
+          ncdf_attput, ncid_out, ivar, 'standard_name', standard_name, /CHAR
+        if (strcompress(long_name, /REMOVE_ALL) ne '') then $
+          ncdf_attput, ncid_out, ivar, 'long_name', long_name, /CHAR
+      endfor
+    ncdf_control, ncid_out, /ENDEF
+
+    ; ----- Required input dimensions
+    ncdf_diminq, ncid_out, ncdf_dimid(ncid_out, 'west_east'),        nm, we
+    ncdf_diminq, ncid_out, ncdf_dimid(ncid_out, 'south_north'),      nm, sn
+    ncdf_diminq, ncid_out, ncdf_dimid(ncid_out, 'west_east_stag'),   nm, we_s
+    ncdf_diminq, ncid_out, ncdf_dimid(ncid_out, 'south_north_stag'), nm, sn_s
+    ncdf_diminq, ncid_out, ncdf_dimid(ncid_out, 'Time'),             nm, NT
+
+    ; ----- Read the latitude/longitude arrays
+    if (Ncdf_GetData(ncid_out, 'XLONG', XLONG) lt 0) then $
+      message, '<XLONG> is not defined in ' + out_file
+    if (Ncdf_GetData(ncid_out, 'XLAT', XLAT) lt 0) then $
+      message, '<XLAT> is not defined in ' + out_file
+    if (Ncdf_GetData(ncid_out, 'XLONG_U', XLONG_U) lt 0) then $
+      message, '<XLONG_U> is not defined in ' + out_file
+    if (Ncdf_GetData(ncid_out, 'XLAT_U', XLAT_U) lt 0) then $
+      message, '<XLAT_U> is not defined in ' + out_file
+    if (Ncdf_GetData(ncid_out, 'XLONG_V', XLONG_V) lt 0) then $
+      message, '<XLONG_V> is not defined in ' + out_file
+    if (Ncdf_GetData(ncid_out, 'XLAT_V', XLAT_V) lt 0) then $
+      message, '<XLAT_V> is not defined in ' + out_file
+
+    ; The WGS64 lat/lon pairs
+    VL_Sphere2WGS, XLONG, XLAT, $
+                   LONS_OUT = XLONG, LATS_OUT = XLAT
+    VL_Sphere2WGS, XLONG_U, XLAT_U, $
+                   LONS_OUT = XLONG_U, LATS_OUT = XLAT_U
+    VL_Sphere2WGS, XLONG_V, XLAT_V, $
+                   LONS_OUT = XLONG_V, LATS_OUT = XLAT_V
+
+    ncdf_varput, ncid_out, ncdf_varid(ncid_out, 'XLONG'),   XLONG
+    ncdf_varput, ncid_out, ncdf_varid(ncid_out, 'XLAT'),    XLAT
+    ncdf_varput, ncid_out, ncdf_varid(ncid_out, 'XLONG_U'), XLONG_U
+    ncdf_varput, ncid_out, ncdf_varid(ncid_out, 'XLAT_U'),  XLAT_U
+    ncdf_varput, ncid_out, ncdf_varid(ncid_out, 'XLONG_V'), XLONG_V
+    ncdf_varput, ncid_out, ncdf_varid(ncid_out, 'XLAT_V'),  XLAT_V
+
+    ; Insert the global attributes
+    ncdf_control, ncid_out, /REDEF
+      Ncdf_PutGlobal_Devel, ncid_out
+      Ncdf_PutGlobal, ncid_out, 'institution', string(10B) + CoapsAddress()
+      Ncdf_PutGlobal, ncid_out, 'conversion', 'converted from spherical coordinates to WGS84 ellipsoid coordinates'
+    ncdf_control, ncid_out, /ENDEF
+
+  ncdf_close, ncid_out
+endfor
+
+END_TIMECOUNT = systime(/seconds)
+theTIME = END_TIMECOUNT - BEG_TIMECOUNT
+if (theTIME le 60.0) then begin
+  print
+  print, 'WRF spherical to WGS84 coordinates conversion time: ', theTIME, 's', format = '(a, f7.2, 2x, a1)'
+  print
+endif else begin
+  print
+  print, 'WRF spherical to WGS84 coordinates conversion time: ', theTIME / 60.0, 'min', format = '(a, f7.2, 2x, a3)'
+  print
+endelse
+
+end

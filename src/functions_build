@@ -1,0 +1,3760 @@
+# Author:  Panagiotis Velissariou <pvelissariou@fsu.edu>
+#                                 <velissariou.1@osu.edu>
+# Version: 1.3
+#
+# Version - 1.3 Fri Jul 26 2013
+# Version - 1.2 Wed Feb 27 2013
+# Version - 1.1 Wed Jul 25 2012
+# Version - 1.0 Thu Apr 15 2004
+
+#------------------------------------------------------------
+# UTILITY FUNCTIONS
+#
+if [ -f functions_common ]; then
+  . functions_common
+else
+  echo " ### ERROR:: in functions_build"
+  echo "     Cannot locate the file: functions_common"
+  echo "     Exiting now ..."
+  echo
+  exit 1
+fi
+
+#============================================================
+# BEG:: COLOR FUNCTIONS
+#============================================================
+
+# Ascii color definitions
+#  0    reset all attributes to their defaults
+#  1    set bold
+#  2    set half-bright (simulated with color on a color display)
+#  4    set underscore (simulated with color on a color display)
+#  5    set blink
+#  7    set reverse video
+# 22    set normal intensity
+# 24    underline off
+# 25    blink off
+# 27    reverse video off
+# 30    set black foreground
+# 31    set red foreground
+# 32    set green foreground
+# 33    set brown foreground
+# 34    set blue foreground
+# 35    set magenta foreground
+# 36    set cyan foreground
+# 37    set white foreground
+# 38    set underscore on, set default foreground color
+# 39    set underscore off, set default foreground color
+# 40    set black background
+# 41    set red background
+# 42    set green background
+# 43    set brown background
+# 44    set blue background
+# 45    set magenta background
+# 46    set cyan background
+# 47    set white background
+# 49    set default background color
+
+# -------------------------------------------------------
+# clrtxt()
+# Usage:      clrtxt [options] text
+# Parameters: text (string)
+# Returns:    0 upon success and 1 upon failure
+# Echoes:     the resulting text
+#
+# Possible options are:
+# -b make bold text (no option argument)
+# -f make flashing text (no option argument)
+# -u make underlined text (no option argument)
+# -c make colored text, color values can be one of:
+#    black, red, green, yellow, blue, magenta, cyan, white
+# -d use a delimeter before/after the text, possible values are:
+#    1 = "[,]", 2 = "{,}" and 3 = "(,)"
+# -o offset the text by a number of columns (int)
+
+# Echoes a colorized text on the terminal
+# -------------------------------------------------------
+clrtxt()
+{
+  local -i retval=0 offset=0
+  local get_opts= my_arg= echoval=
+  local dftxt= bdtxt= ultxt= fltxt= black=  white=
+  local red= green= yellow= blue= magenta= cyan=
+  local txt_b= txt_f= txt_u= txt_c=
+  local txt_d1= txt_d2= txt_o=
+# Use these to reset the options since the shell does not
+# do that automatically
+  local opt_id=${OPTIND} opt_arg="${OPTARG}"
+
+  [ $# -eq 0 ] && return 1
+  
+  if [ "${COLORSET:-unset}" != "unset" ]; then
+  # Text colors
+    black=`echo -en "\\033[0;30m"`
+    red=`echo -en "\\033[0;31m"`
+    green=`echo -en "\\033[0;32m"`
+    yellow=`echo -en "\\033[0;33m"`
+    blue=`echo -en "\\033[0;34m"`
+    magenta=`echo -en "\\033[0;35m"`
+    cyan=`echo -en "\\033[0;36m"`
+    white=`echo -en "\\033[0;37m"`
+  # Text effects
+    dftxt=`echo -en "\\033[0m"`
+    bdtxt=`echo -en "\\033[1m"`
+    ultxt=`echo -en "\\033[4m"`
+    fltxt=`echo -en "\\033[5m"`
+  fi
+
+  while getopts ":bfuc:o:d:" get_opts
+  do
+    case ${get_opts} in
+      b) txt_b="${bdtxt}" ;;
+      f) txt_f="${fltxt}" ;;
+      u) txt_u="${ultxt}" ;;
+      c) case "${OPTARG}" in
+             black) txt_c="${black}" ;;
+               red) txt_c="${red}" ;;
+             green) txt_c="${green}" ;;
+            yellow) txt_c="${yellow}" ;;
+              blue) txt_c="${blue}" ;;
+           magenta) txt_c="${magenta}" ;;
+              cyan) txt_c="${cyan}" ;;
+             white) txt_c="${white}" ;;
+                 *) ;;
+         esac ;;
+      o) offset=${OPTARG}
+         [ ${OPTARG} -ne 0 ] && \
+           txt_o="`echo -en "\\033[${offset}C"`" ;;
+      d) case "${OPTARG}" in
+           1) txt_d1='['
+              txt_d2=']' ;;
+           2) txt_d1='{'
+              txt_d2='}' ;;
+           3) txt_d1='('
+              txt_d2=')' ;;
+           *) ;;
+         esac ;;
+      *) ;; # DEFAULT
+    esac
+  done
+
+# Get the first argument after the options
+  shift $(( ${OPTIND} - 1 ))
+  my_arg="${1}"
+
+# Reset the option variables since the shell doesn't do it
+  OPTIND=${opt_id}
+  OPTARG="${opt_arg}"
+
+  [ "X${my_arg}" = "X" ] && return 1
+
+# Work on the options
+  if [ "X${txt_b}" != "X" ]; then
+    [ "X${txt_d1}" != "X" ] && \
+      txt_d1="${dftxt}${txt_b}${txt_d1}${dftxt}"
+    [ "X${txt_d2}" != "X" ] && \
+      txt_d2="${dftxt}${txt_b}${txt_d2}${dftxt}"
+  fi
+
+# Build the output text
+  echoval="${txt_o}${txt_d1}${txt_c}"
+  echoval="${echoval}${txt_b}${txt_u}${txt_f}"
+  echoval="${echoval}${my_arg}${dftxt}${txt_d2}"
+
+  echo -en "${echoval}"
+
+  return 0
+}
+
+# -------------------------------------------------------
+# clrset()
+# Usage:      clrset [color]
+# Parameters: color (string)
+#             color=black,red,green,yellow,blue,magenta,cyan,white
+#             If no argument is supplied resets to the default
+# Returns:    0 upon success and 1 upon failure
+# Echoes:     If the variable COLORSET is set then echoes
+#             the ascii sequence of the resulting color. If it
+#             is called without arguments and the variable COLORSET
+#             is set it echoes the "default text" ascii sequence
+#
+# -------------------------------------------------------
+clrset()
+{
+  local -i retval=0
+
+  [ "${COLORSET:-unset}" = "unset" ] && return ${retval}
+  if [ $# -gt 0 ]; then
+    case ${1} in
+        black) echo -en "\\033[0;30m" ;;
+          red) echo -en "\\033[0;31m" ;;
+        green) echo -en "\\033[0;32m" ;;
+       yellow) echo -en "\\033[0;33m" ;;
+         blue) echo -en "\\033[0;34m" ;;
+      magenta) echo -en "\\033[0;35m" ;;
+         cyan) echo -en "\\033[0;36m" ;;
+        white) echo -en "\\033[0;37m" ;;
+            *) ;; # DEFAULT
+    esac
+  else
+    # Reset the color
+    echo -en "\\033[0m"
+  fi
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# bdon(), bdoff(), bdtxt()
+# Usage:      bdon, bdoff, bdtxt text
+# Parameters: bdon, bdoff : NONE, bdtxt text (string)
+# Returns:    0
+# Example:    `bdon`Some Text`bdoff`
+#             bdon Some Text bdoff
+# Echoes:     The function "bdon" echoes the "bold text"
+#             ascii sequence and the function "bdoff"
+#             echoes the "normal text" ascii sequence
+#             (that is, bold text on and off)
+# -------------------------------------------------------
+bdon()
+{
+  local -i retval=0
+
+  [ "${COLORSET:-unset}" = "unset" ] && return ${retval}
+  echo -en "\\033[1m"
+  return ${retval}
+}
+bdoff()
+{
+  local -i retval=0
+
+  [ "${COLORSET:-unset}" = "unset" ] && return ${retval}
+  echo -en "\\033[22m"
+  return ${retval}
+}
+bdtxt()
+{
+  local -i retval=0
+  local echoval="${1}"
+
+  [ "${COLORSET:-unset}" = "unset" ] && \
+    { echo -en ${echoval}; return ${retval}; }
+
+  [ "X${echoval}" = "X" ] && \
+    { echo -en ${echoval}; return ${retval}; }
+
+  echo -en "\\033[1m${echoval}\\033[22m"
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# ulon(), uloff(), ultxt()
+# Usage:      ulon, uloff, ultxt text
+# Parameters: ulon, uloff : NONE, ultxt text (string)
+# Returns:    0
+# Example:    `ulon`Some Text`uloff`
+#             ulon Some Text uloff
+# Echoes:     The function "ulon" echoes the "underline text"
+#             ascii sequence and the function "uloff"
+#             echoes the "normal text" ascii sequence
+#             (that is, underline text on and off)
+# -------------------------------------------------------
+ulon()
+{
+  local -i retval=0
+
+  [ "${COLORSET:-unset}" = "unset" ] && return ${retval}
+  echo -en "\\033[4m"
+  return ${retval}
+}
+uloff()
+{
+  local -i retval=0
+
+  [ "${COLORSET:-unset}" = "unset" ] && return ${retval}
+  echo -en "\\033[24m"
+  return ${retval}
+}
+ultxt()
+{
+  local -i retval=0
+  local echoval="${1}"
+
+  [ "${COLORSET:-unset}" = "unset" ] && \
+    { echo -en ${echoval}; return ${retval}; }
+
+  [ "X${echoval}" = "X" ] && \
+    { echo -en ${echoval}; return ${retval}; }
+
+  echo -en "\\033[4m${echoval}\\033[24m"
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# flon(), floff(), fltxt()
+# Usage:      flon, floff, fltxt text
+# Parameters: flon, floff : NONE, fltxt text (string)
+# Returns:    0
+# Example:    `flon`Some Text`floff`
+#             flon Some Text floff
+# Echoes:     The function "flon" echoes the "flashing text"
+#             ascii sequence and the function "floff"
+#             echoes the "normal text" ascii sequence
+#             (that is, flashing text on and off)
+# -------------------------------------------------------
+flon()
+{
+  local -i retval=0
+
+  [ "${COLORSET:-unset}" = "unset" ] && return ${retval}
+  echo -en "\\033[5m"
+  return ${retval}
+}
+floff()
+{
+  local -i retval=0
+
+  [ "${COLORSET:-unset}" = "unset" ] && return ${retval}
+  echo -en "\\033[25m"
+  return ${retval}
+}
+fltxt()
+{
+  local -i retval=0
+  local echoval="${1}"
+
+  [ "${COLORSET:-unset}" = "unset" ] && \
+    { echo -en ${echoval}; return ${retval}; }
+
+  [ "X${echoval}" = "X" ] && \
+    { echo -en ${echoval}; return ${retval}; }
+
+  echo -en "\\033[5m${echoval}\\033[25m"
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# rvon(), rvoff(), rvtxt()
+# Usage:      rvon, rvoff, rvtxt text
+# Parameters: rvon, rvoff : NONE, rvtxt text (string)
+# Returns:    0
+# Example:    `rvon`Some Text`rvoff`
+#             rvon Some Text rvoff
+# Echoes:     The function "rvon" echoes the "reverse video"
+#             ascii sequence and the function "rvoff"
+#             echoes the "normal video" ascii sequence
+#             (that is, reverse video on and off)
+# -------------------------------------------------------
+rvon()
+{
+  local -i retval=0
+
+  [ "${COLORSET:-unset}" = "unset" ] && return ${retval}
+  echo -en "\\033[7m"
+  return ${retval}
+}
+rvoff()
+{
+  local -i retval=0
+
+  [ "${COLORSET:-unset}" = "unset" ] && return ${retval}
+  echo -en "\\033[27m"
+  return ${retval}
+}
+rvtxt()
+{
+  local -i retval=0
+  local echoval="${1}"
+
+  [ "${COLORSET:-unset}" = "unset" ] && \
+    { echo -en ${echoval}; return ${retval}; }
+
+  [ "X${echoval}" = "X" ] && \
+    { echo -en ${echoval}; return ${retval}; }
+
+  echo -en "\\033[7m${echoval}\\033[27m"
+
+  return ${retval}
+}
+
+
+
+esucc()
+{
+  local -i retval=0
+
+  clrtxt -c green -d 1 "OK"
+  return ${retval}
+}
+
+efail()
+{
+  local -i retval=0
+
+  clrtxt -c red -d 1 "FAILED"
+  return ${retval}
+}
+
+epass()
+{
+  local -i retval=0
+
+  clrtxt -c yellow -d 1 "PASSED"
+  return ${retval}
+}
+
+ewarn()
+{
+  local -i retval=0
+
+  clrtxt -c yellow -d 1 "WARNING"
+  return ${retval}
+}
+
+eerr()
+{
+  local -i retval=0
+
+  clrtxt -c red -d 1 "ERROR"
+  return ${retval}
+}
+
+efunc()
+{
+  local -i retval=0
+
+  [ $# -eq 0 ] && { echo -en ""; return ${retval}; }
+
+  clrtxt -c magenta "${1}"
+  return ${retval}
+}
+
+escr()
+{
+  local -i retval=0
+
+  [ $# -eq 0 ] && { echo -en ""; return ${retval}; }
+
+  clrtxt -c blue "${1}"
+  return ${retval}
+}
+
+eargs()
+{
+  local -i retval=0
+
+  [ $# -eq 0 ] && { echo -en ""; return ${retval}; }
+
+  clrtxt -c green "${1}"
+  return ${retval}
+}
+
+forceExit()
+{
+  local -i status=1
+
+  echo " `clrset red`### ERROR`clrset`: `escr ${scrNAME}` (`efunc ${FUNCNAME}`)"
+  [ "X${1}" != "X" ] && echo "       ${1}"
+  echo "     `clrset red`Exiting now ...`clrset`"
+
+  exit ${status}
+}
+
+onError()
+{
+  local -i status=$?
+  
+  if [ ${status} -ne 0 ]; then
+    echo " `clrset red`### ERROR`clrset`: `escr ${scrNAME}` (`efunc ${FUNCNAME}`)"
+    [ "X${1}" != "X" ] && echo "       ${1}"
+    echo "     `clrset red`Exiting now ...`clrset`"
+    exit ${status}
+  fi
+
+  return ${status}
+}
+
+#============================================================
+# END:: COLOR FUNCTIONS
+#============================================================
+
+
+
+
+#============================================================
+# BEG:: MODELLING SYSTEM BUILD FUNCTIONS
+#============================================================
+
+oftxt ()
+{
+  echo -en "\\033[${1}C"
+}
+
+nrmtxt()
+{
+  echo -en "${1}"
+}
+magtxt()
+{
+  echo -en `clrset magenta`"${1}"`clrset`
+}
+redtxt()
+{
+  echo -en `clrset red`"${1}"`clrset`
+}
+grntxt()
+{
+  echo -en `clrset green`"${1}"`clrset`
+}
+blutxt()
+{
+  echo -en `clrset blue`"${1}"`clrset`
+}
+yeltxt()
+{
+  echo -en `clrset yellow`"${1}"`clrset`
+}
+cyatxt()
+{
+  echo -en `clrset cyan`"${1}"`clrset`
+}
+
+titxt()
+{
+  clrtxt -o 1 -c green "********************  ${1}  ********************"
+  echo
+}
+sctxt()
+{
+  clrtxt -o 12 -c blue -b -u "${1}"
+  echo
+}
+optxt()
+{
+  oftxt 1
+  magtxt "${1}"
+  oftxt 3
+}
+
+usage()
+{
+  echo; titxt "AVAILABLE OPTIONS"; echo
+  echo " In addition to passing the configuration parameters/variables using"
+  echo "   the available options of this script, the configuration parameters/variables"
+  echo "   can also be obtained from the environment if the defaults are not sufficient."
+  echo " The environment variables can be set (a) from the command line (see section"
+  echo "   ALTERNATIVE OPTIONS INPUT), (b) by exporting them to the environment prior of"
+  echo "   running this script, (c) by sourcing the configuration file set in the"
+  echo "   \"COAWST_ENV\" environment variable."
+  echo " For a further explanation of these variables, see the script source code."
+
+  echo; sctxt "General options"
+  optxt "-help|-h   "; nrmtxt "Show this help screen."; echo
+  optxt "-c         "; nrmtxt "Set a name/id for the case being run/compiled."; redtxt "not set (default)."; echo
+  optxt "-noclean   "; nrmtxt "Do not clean already compiled ROMS/SWAN objects."; echo
+  optxt "-nocleanwrf"; nrmtxt "Do not clean already compiled WRF objects and configurations."; echo
+  optxt "-nocleanwps"; nrmtxt "Do not clean already compiled WPS objects and configurations."; echo
+  optxt "-nocompile "; nrmtxt "Do not continues with the compilation process."; echo
+  optxt "-wps       "; nrmtxt "Build WPS."; echo
+  optxt "-vers      "; nrmtxt "Append a version string to the name of the final executable."; echo
+  optxt "-j [N]     "; nrmtxt "Compile in parallel using N CPUs (omit to use all CPUs)."; echo
+  optxt "-m \"my_modulefiles\""; redtxt "not set (default)."; echo
+  echo "    The names of the modulefiles to load and use for compilation."
+  echo "    - controls the environment for the Fortran/C/C++ and MPI compilers."
+  echo "    - omit this argument if everything is already in the user's PATH."
+  optxt "-debug|-debug=yes/no"; redtxt "debug=no (default)."; echo
+  echo "    To set the debuging options during compilation."
+  optxt "-comp=my_fortran_compiler"; redtxt "comp=ifort (default)."; echo
+  echo "    The Fortran compiler to use."
+  optxt "-env=my_coawst_env_file"; redtxt "not set (default)."; echo
+  echo "    If this environment variable has been set and points to a file, then this script"
+  echo "    sources that file. The file is to contain the user's values of the variables"
+  echo "    (see next) used by this script. Each line can contain the definition like:"
+  echo "      ROMS_APPLICATION=my_roms_application"
+  echo "    If COAWST_ENV is not set, the script is looking for the file coawst_environment.sh"
+  echo "    to get the user's input. If still the above are not set, the script uses it's"
+  echo "    build in defaults."
+  echo "    The variables can also be set from the command line, using the script options"
+  echo "    described next."
+
+  echo; sctxt "MPI/OPENMP options"
+  optxt "-mpi|-mpi=yes/no"; redtxt "mpi=yes (default)."; echo
+  echo "    To use the MPI libraries and the MPI system installed."
+  optxt "-mpif90|-mpif90=yes/no"; redtxt "mpif90=yes (default)."; echo
+  echo "    To use the mpif90 compiler instead of the plain Fortran compiler."
+  optxt "-omp|-omp=yes/no"; redtxt "omp=no (default)."; echo
+  echo "    To use the OPENMP libraries and the OPENMP system."
+
+  echo; sctxt "COAWST/ROMS/WRF options"
+  optxt "-app=roms_application"; redtxt "not set (default)."; echo
+  echo "    Set the name of the ROMS application to use."
+  optxt "-root=my_root_dir"; redtxt "a default value is set internally by this script."; echo
+  echo "    The path to the COAWST/ROMS root directory. All other COAWST directories are"
+  echo "    set by default relative to this directory."
+  optxt "-proj=my_project_dir"; redtxt "a default value is set internally by this script."; echo
+  echo "    The path to the user's local COAWST/ROMS project directory. Here are stored all"
+  echo "    the essential COAWST/ROMS files."
+  optxt "-src=my_roms_src"; redtxt "\${MY_ROOT_DIR} (default)."; echo
+  echo "    The path of the local COAWST/ROMS source code."
+  optxt "-compilers=my_compilers_dir"; redtxt "\${MY_ROMS_SRC}/Compilers (default)."; echo
+  echo "    Set the path of the directory containing the makefile configuration (*.mk) files."
+  optxt "-hdr=my_header_dir"; redtxt "\${MY_PROJECT_DIR}/ROMS/Include (default)."; echo
+  echo "    The path of the directory where the main COAWST/ROMS header files are stored."
+  optxt "-ana=my_analytical_dir"; redtxt "\${MY_PROJECT_DIR}/ROMS/Functionals (default)."; echo
+  echo "    Set the path of the directory containing the user's analytical forcing files."
+  echo "    COAWST/ROMS will look in the above location in addition to the default ROMS location."
+  optxt "-bin=my_bin_dir"; redtxt "\${MY_PROJECT_DIR} (default)."; echo
+  echo "    Set the path of the directory where the final COAWST/ROMS executable will go."
+  optxt "-scratch=my_scratch_dir"; redtxt "\${MY_ROMS_SRC}/Build (default)."; echo
+  echo "    The path of the project specific Build directory where COAWST/ROMS puts"
+  echo "    the f90 files to avoid conflicts with other projects."
+  optxt "-cpp=\"my_cpp_flags\""; redtxt "not set (default)."; echo
+  echo "    Sometimes it is desirable to activate one or more CPP options to run different"
+  echo "    variants of the same application without modifying its header file. If this is"
+  echo "    the case, specify each options here using the -D syntax."
+  optxt "-ngrids=my_ngrids"; redtxt "ngrids=1 (default)."; echo
+  echo "    Set number of Nested grids for ROMS and or SWAN. This feature is activated"
+  echo "    with the cpp option \"REFINED_GRID\". If you are using both ROMS and SWAN, you"
+  echo "    need to have the same number of grids for both models."
+  optxt "-wsrc=\"my_wrf_dir\""; redtxt "\${MY_ROOT_DIR}/WRF (default)."; echo
+  echo "    The path of the local COAWST/WRF source code."
+  optxt "-swnsrc=\"my_swan_dir\""; redtxt "\${MY_ROOT_DIR}/SWAN (default)."; echo
+  echo "    The path of the local COAWST/SWAN source code."
+
+  echo; sctxt "NetCDF-3/NetCDF-4 options"
+  optxt "-ncdf3|-ncdf3=yes/no"; redtxt "ncdf3=no (default}."; echo
+  echo "    To use the installed NetCDF-3 libraries."
+  optxt "-ncdf4|-ncdf4=yes/no"; redtxt "ncdf4=yes (default}."; echo
+  echo "    To use the installed NetCDF-4 libraries."
+  optxt "-large|-large=yes/no"; redtxt "large=yes (default}."; echo
+  echo "    To enable the large files capability of the NetCDF libraries."
+  optxt "-ncdf_root=my_netcdf_root"; redtxt "ncdf_root=/opt/hpc/intel (default)."; echo
+  echo "    The path of the directory where NetCDF is installed."
+  optxt "-ncdf_conf=my_nc-config"; redtxt "ncdf_conf=\${ncdf_root}/bin/nc-config (default)."; echo
+  echo "    The path to the nc-config NetCDF script, if it is not in"
+  echo "    \${ncdf_root}/bin/nc-config."
+  optxt "-ncdf_inc=my_netcdf_inc_dir"; redtxt "ncdf_inc=\${ncdf_root}/include (default)."; echo
+  echo "    The path of the directory where the NetCDF header files are installed, if"
+  echo "    they are not in \${ncdf_root}/include."
+  optxt "-ncdf_lib=my_netcdf_lib_dir"; redtxt "ncdf_lib=\${ncdf_root}/lib[64] (default)."; echo
+  echo "    The path of the directory where the NetCDF library files are installed, if"
+  echo "    they are not in \${ncdf_root}/lib[64]."
+
+  echo; sctxt "HDF5 options"
+  optxt "-hdf5|-hdf5=yes/no"; redtxt "hdf5=no (default}."; echo
+  echo "    To use the installed HDF5 libraries (REQUIRED for parallel NetCDF)."
+  optxt "-hdf5_root=my_hdf5_root"; redtxt "hdf5_root=\${ncdf_root} (default)."; echo
+  echo "    The path of the directory where HDF5 is installed."
+  optxt "-hdf5_inc=my_hdf5_inc_dir"; redtxt "hdf5_inc=\${hdf5_root}/include (default)."; echo
+  echo "    The path of the directory where the HDF5 header files are installed, if"
+  echo "    they are not in \${hdf5_root}/include."
+  optxt "-hdf5_lib=my_hdf5_lib_dir"; redtxt "hdf5_lib=\${hdf5_root}/lib[64] (default)."; echo
+  echo "    The path of the directory where the HDF5 library files are installed, if"
+  echo "    they are not in \${hdf5_root}/lib[64]."
+
+  echo; sctxt "Parallel I/O and PNetCDF/Parallel NetCDF-4 options"
+  optxt "-pio|-pio=yes/no"; redtxt "pio=no (default)."; echo
+  echo "    To enable the parallel I/O functionality in the compiled programs."
+  optxt "-pncdf|-pncdf=yes/no"; redtxt "pncdf=no (default)."; echo
+  echo "    To use the installed PNetCDF/Parallel NetCDF libraries."
+  optxt "-pncdf_root=my_pncdf_root"; redtxt "pncdf_root=\${ncdf_root} (default)."; echo
+  echo "    The path of the directory where PNetCDF/Parallel NetCDF is installed."
+  optxt "-pncdf_inc=my_pncdf_inc_dir"; redtxt "pncdf_inc=\${pncdf_root}/include (default)."; echo
+  echo "    The path of the directory where the PNetCDF/Parallel NetCDF header files"
+  echo "    are installed, if they are not in \${pncdf_root}/include."
+  optxt "-pncdf_lib=my_pncdf_lib_dir"; redtxt "pncdf_lib=\${pncdf_root}/lib[64] (default)."; echo
+  echo "    The path of the directory where the PNetCDF/Parallel NetCDF library files"
+  echo "    are installed, if they are not in \${pncdf_root}/lib[64]."
+
+  echo; sctxt "MCT toolkit options"
+  optxt "-mct_root=my_mct_root"; redtxt "mct_root=\${MY_ROMS_SRC}/Lib/MCT (default}."; echo
+  echo "    The path of the directory where MCT is installed."
+  optxt "-mct_inc=my_mct_inc_dir"; redtxt "mct_inc=\${mct_root}/include (default)."; echo
+  echo "    The path of the directory where the MCT header files are installed, if"
+  echo "    they are not in \${mct_root}/include."
+  optxt "-mct_lib=my_mct_lib_dir"; redtxt "mct_lib=\${mct_root}/lib[64] (default)."; echo
+  echo "    The path of the directory where the MCT library files are installed, if"
+  echo "    they are not in \${mct_root}/lib[64]."
+
+  echo; sctxt "ARPACK/PARPACK options"
+  optxt "-arp|-arp=yes/no"; redtxt "arp=no (default)."; echo
+  echo "    To use the installed Jasper libraries."
+  optxt "-arp_root=my_arp_root"; redtxt "arp_root=\${MY_ROMS_SRC}/Lib/ARPACK (default}."; echo
+  echo "    The path of the directory where ARPACK is installed."
+  optxt "-arp_inc=my_arp_inc_dir"; redtxt "arp_inc=\${arp_root}/include (default)."; echo
+  echo "    The path of the directory where the ARPACK header files are installed, if"
+  echo "    they are not in \${arp_root}/include."
+  optxt "-arp_lib=my_arp_lib_dir"; redtxt "arp_lib=\${arp_root}/lib[64] (default)."; echo
+  echo "    The path of the directory where the ARPACK library files are installed, if"
+  echo "    they are not in \${arp_root}/lib[64]."
+  echo
+  optxt "-parp|-parp=yes/no"; redtxt "parp=no (default)."; echo
+  echo "    To use the installed Jasper libraries."
+  optxt "-parp_root=my_parp_root"; redtxt "parp_root=\${MY_ROMS_SRC}/Lib/ARPACK (default}."; echo
+  echo "    The path of the directory where PARPACK is installed."
+  optxt "-parp_inc=my_parp_inc_dir"; redtxt "parp_inc=\${parp_root}/include (default)."; echo
+  echo "    The path of the directory where the PARPACK header files are installed, if"
+  echo "    they are not in \${parp_root}/include."
+  optxt "-parp_lib=my_parp_lib_dir"; redtxt "parp_lib=\${parp_root}/lib[64] (default)."; echo
+  echo "    The path of the directory where the PARPACK library files are installed, if"
+  echo "    they are not in \${parp_root}/lib[64]."
+
+  echo; sctxt "ESMF options"
+  optxt "-esmf|-esmf=yes/no"; redtxt "esmf=no (default)."; echo
+  echo "    To use the installed ESMF libraries."
+  optxt "-esmf_root=my_esmf_root"; redtxt "not set (default)."; echo
+  echo "    The path of the directory where ESMF is installed."
+  optxt "-esmf_inc=my_esmf_inc_dir"; redtxt "not set (default)."; echo
+  echo "    The path of the directory where the ESMF header files are installed."
+  optxt "-esmf_lib=my_esmf_lib_dir"; redtxt "not set (default)."; echo
+  echo "    The path of the directory where the ESMF library files are installed."
+
+  echo; sctxt "Jasper options (for Grib2 support in WRF/WPS)"
+  optxt "-jsp|-jsp=yes/no"; redtxt "jsp=no (default)."; echo
+  echo "    To use the installed Jasper libraries."
+  optxt "-jsp_root=my_jsp_root"; redtxt "jsp_root=/usr (default)."; echo
+  echo "    The path of the directory where Jasper is installed."
+  optxt "-jsp_inc=my_jsp_inc_dir"; redtxt "jsp_inc=\${jsp_root}/jasper/include (default)."; echo
+  echo "    The path of the directory where the Jasper header files are installed, if"
+  echo "    they are not in \${jsp_root}/jasper/include."
+  optxt "-jsp_lib=my_jsp_lib_dir"; redtxt "jsp_lib=\${jsp_root}/[64] (default)."; echo
+  echo "    The path of the directory where the Jasper library files are installed, if"
+  echo "    they are not in \${jsp_root}/lib[64]."
+
+  echo; sctxt "NCAR/NCL graphics options (for WPS)"
+  optxt "-ncl|-ncl=yes/no"; redtxt "ncl=no (default)."; echo
+  echo "    To use the installed NCAR/NCL graphics libraries."
+  optxt "-ncl_root=my_ncl_root"; redtxt "ncl_root=/usr (default)."; echo
+  echo "    The path of the directory where NCAR/NCL graphics is installed."
+  optxt "-ncl_inc=my_ncl_inc_dir"; redtxt "ncl_inc=\${ncl_root}/jasper/include (default)."; echo
+  echo "    The path of the directory where the NCAR/NCL graphics header files are installed, if"
+  echo "    they are not in \${ncl_root}/jasper/include."
+  optxt "-ncl_lib=my_ncl_lib_dir"; redtxt "ncl_lib=\${ncl_root}/[64] (default)."; echo
+  echo "    The path of the directory where the NCAR/NCL graphics library files are installed, if"
+  echo "    they are not in \${ncl_root}/lib[64]."
+  optxt "-ncl_xlibs=my_ncl_xlibs"; redtxt "none (default)."; echo
+  echo "    Extra libraries required for the NCAR/NCL graphics library files"
+  echo "    (e.g., -lgfortran)."
+
+  # --------------------------------------------------------------------------------
+  echo; titxt "ALTERNATIVE OPTIONS INPUT"
+
+  echo; sctxt "General environment parameters"
+  echo " - `magtxt "CLEAN=0/1"`                               `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "CLEANWRF=0/1"`                            `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "CLEANWPS=0/1"`                            `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "PARMAKE_NCPUS=my_ncpus"`                  `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "MODFILES=\\"my_modulefiles\\""`               `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "USE_DEBUG=yes/no"`                        `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "COMPILER=my_compiler"`                    `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "COAWST_ENV=my_coawst_env_file"`           `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "DO_COMPILE=0/1"`                          `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "VERSIONING=0/1"`                          `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "BUILD_WPS=yes/no"`                        `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+
+  echo; sctxt "MPI/OPENMP environment parameters"
+  echo " - `magtxt "USE_MPI=yes/no"`                          `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "USE_MPIF90=yes/no"`                       `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "USE_OPENMP=yes/no"`                       `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+
+  echo; sctxt "COAWST/ROMS/WRF environment parameters"
+  echo " - `magtxt "ROMS_APPLICATION=my_roms_application"`    `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "MY_ROOT_DIR=my_root_dir"`                 `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "MY_PROJECT_DIR=my_project_dir"`           `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "MY_ROMS_SRC=my_roms_src"`                 `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "COMPILERS=compilers"`                     `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "MY_HEADER_DIR=my_header_dir"`             `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "MY_ANALYTICAL_DIR=my_analytical_dir"`     `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "SCRATCH_DIR=my_scratch_dir"`              `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "MY_CPP_FLAGS=\\"my_cpp_flags\\""`             `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "NestedGrids=my_nested_grids"`             `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "WRF_DIR=my_wrf_dir"`                      `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "SWAN_DIR=my_swan_dir"`                    `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+
+  echo; sctxt "NetCDF-3/NetCDF-4 environment parameters"
+  echo " - `magtxt "USE_NETCDF3=yes/no"`                      `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "USE_NETCDF4=yes/no"`                      `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "USE_LARGE=yes/no"`                        `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "NETCDF_ROOT=my_netcdf_root_dir"`          `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo "     If it is set, then:"
+  echo "       NC_CONFIG=\${NETCDF_ROOT}/bin/nc-config (if NetCDF-4 is detected)"
+  echo "       NETCDF_INCDIR=\${NETCDF_ROOT}/include"
+  echo "       NETCDF_LIBDIR=\${NETCDF_ROOT}/lib[64]"
+  echo " - `magtxt "NC_CONFIG=nc_config_script"`              `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "NETCDF_INCDIR=my_netcdf_include_dir"`     `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "NETCDF_LIBDIR=my_netcdf_library_dir"`     `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+
+  echo; sctxt "HDF5 environment parameters"
+  echo " - `magtxt "USE_HDF5=yes/no"`                         `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "HDF5_ROOT=my_hdf5_root_dir"`              `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo "     If it is set, then:"
+  echo "       HDF5_INCDIR=\${HDF5_ROOT}/include"
+  echo "       HDF5_LIBDIR=\${HDF5_ROOT}/lib[64]"
+  echo " - `magtxt "HDF5_INCDIR=my_hdf5_include_dir"`         `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "HDF5_LIBDIR=my_hdf5_library_dir"`         `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+
+  echo; sctxt "Parallel I/O and PNetCDF/Parallel NetCDF-4 environment parameters"
+  echo " - `magtxt "USE_PARALLEL_IO=yes/no"`                  `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "USE_PNETCDF=yes/no"`                      `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "PNETCDF_ROOT=my_pnetcdf_root_dir"`        `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo "     If it is set, then:"
+  echo "       PNETCDF_INCDIR=\${PNETCDF_ROOT}/include"
+  echo "       PNETCDF_LIBDIR=\${PNETCDF_ROOT}/lib[64]"
+  echo " - `magtxt "PNETCDF_INCDIR=my_pnetcdf_include_dir"`   `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "PNETCDF_LIBDIR=my_pnetcdf_library_dir"`   `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+
+  echo; sctxt "MCT toolkit environment parameters"
+  echo " - `magtxt "MCT_ROOT=my_mct_root_dir"`                `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo "     If it is set, then:"
+  echo "       MCT_INCDIR=\${MCT_ROOT}/include"
+  echo "       MCT_LIBDIR=\${MCT_ROOT}/lib[64]"
+  echo " - `magtxt "MCT_INCDIR=my_mct_include_dir"`           `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "MCT_LIBDIR=my_mct_library_dir"`           `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+
+  echo; sctxt "ARPACK/PARPACK environment parameters"
+  echo " - `magtxt "USE_ARPACK=yes/no"`                       `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "ARPACK_ROOT=my_arpack_root_dir"`          `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo "     If it is set, then:"
+  echo "       ARPACK_INCDIR=\${ARPACK_ROOT}/include"
+  echo "       ARPACK_LIBDIR=\${ARPACK_ROOT}/lib[64]"
+  echo " - `magtxt "ARPACK_INCDIR=my_arpack_include_dir"`     `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "ARPACK_LIBDIR=my_arpack_library_dir"`     `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo
+  echo " - `magtxt "USE_PARPACK=yes/no"`                      `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "PARPACK_ROOT=my_parpack_root_dir"`        `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo "     If it is set, then:"
+  echo "       PARPACK_INCDIR=\${PARPACK_ROOT}/include"
+  echo "       PARPACK_LIBDIR=\${PARPACK_ROOT}/lib[64]"
+  echo " - `magtxt "PARPACK_INCDIR=my_parpack_include_dir"`   `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "PARPACK_LIBDIR=my_parpack_library_dir"`   `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+
+  echo; sctxt "ESMF environment parameters"
+  echo " - `magtxt "USE_ESMF=yes/no"`                         `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "ESMF_ROOT=my_esmf_root_dir"`              `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo "     If it is set, then:"
+  echo "       ESMF_INCDIR=\${ESMF_ROOT}/include"
+  echo "       ESMF_LIBDIR=\${ESMF_ROOT}/lib[64]"
+  echo " - `magtxt "ESMF_INCDIR=my_esmf_include_dir"`         `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "ESMF_LIBDIR=my_esmf_library_dir"`         `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+
+  echo; sctxt "Jasper environment parameters (for Grib2 support in WRF/WPS)"
+  echo " - `magtxt "USE_JASPER=yes/no"`                       `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "JASPER_ROOT=my_jasper_root_dir"`          `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo "     If it is set, then:"
+  echo "       JASPER_INCDIR=\${JASPER_ROOT}/include"
+  echo "       JASPER_LIBDIR=\${JASPER_ROOT}/lib[64]"
+  echo " - `magtxt "JASPER_INCDIR=my_jasper_include_dir"`     `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "JASPER_LIBDIR=my_jasper_library_dir"`     `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+
+  echo; sctxt "NCAR/NCL graphics environment parameters (for WPS)"
+  echo " - `magtxt "USE_NCL=yes/no"`                          `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "NCL_ROOT=my_ncl_root_dir"`                `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo "     If it is set, then:"
+  echo "       NCL_INCDIR=\${NCL_ROOT}/include"
+  echo "       NCL_LIBDIR=\${NCL_ROOT}/lib[64]"
+  echo " - `magtxt "NCL_INCDIR=my_ncl_include_dir"`           `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "NCL_LIBDIR=my_ncl_library_dir"`           `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+  echo " - `magtxt "NCL_XLIBS=\"my_ncl_xlibs\""`                `grntxt "${scrNAME}"` `magtxt "[other options]"`"
+
+  exit 0
+}
+
+# -------------------------------------------------------
+# ParseArgs()
+# Usage:      ParseArgs args
+# Parameters: args = the script options
+# Returns:    0
+# Echoes:     NONE
+#
+# Gets the supplied options to the script.
+# -------------------------------------------------------
+ParseArgs()
+{
+  local -i opt_flg=0
+  local opt_opt opt_arg
+
+  local my_DO_COMPILE=1 my_VERSIONING=0 my_NestedGrids
+
+  local my_CLEAN my_CLEANWRF my_PARMAKE_NCPUS my_CLEANWPS
+  local my_MODFILES
+  local my_USE_DEBUG my_COMPILER my_COAWST_ENV my_CASEID
+  local my_BUILD_WPS
+  local my_USE_MPI my_USE_MPIF90 my_USE_OPENMP
+  local my_ROMS_APPLICATION my_MY_ROOT_DIR my_MY_PROJECT_DIR
+  local my_MY_ROMS_SRC my_COMPILERS my_MY_HEADER_DIR my_MY_ANALYTICAL_DIR
+  local my_SCRATCH_DIR my_MY_CPP_FLAGS
+  local my_WRF_DIR my_SWAN_DIR
+  local my_USE_NETCDF3 my_USE_NETCDF4 my_USE_LARGE
+  local my_NETCDF_ROOT my_NC_CONFIG my_NETCDF_INCDIR my_NETCDF_LIBDIR
+  local my_USE_HDF5 my_HDF5_ROOT my_HDF5_INCDIR my_HDF5_LIBDIR
+  local my_USE_PARALLEL_IO
+  local my_USE_PNETCDF PNETCDF_ROOT PNETCDF_INCDIR PNETCDF_LIBDIR
+  local my_MCT_ROOT my_MCT_INCDIR my_MCT_LIBDIR
+  local my_USE_ARPACK my_ARPACK_ROOT my_ARPACK_INCDIR my_ARPACK_LIBDIR
+  local my_USE_PARPACK my_PARPACK_ROOT my_PARPACK_INCDIR my_PARPACK_LIBDIR
+  local my_USE_ESMF my_ESMF_ROOT my_ESMF_INCDIR my_ESMF_LIBDIR
+  local my_USE_JASPER my_JASPER_ROOT my_JASPER_INCDIR my_JASPER_LIBDIR
+  local my_USE_NCL my_NCL_ROOT my_NCL_INCDIR my_NCL_LIBDIR my_NCL_XLIBS
+
+  [ -n "${envISSET:+1}" ] && opt_flg=1
+
+  my_MY_ROOT_DIR="${rootDIR:-}"
+
+  while test $# -gt 0; do
+    case "${1}" in
+      -*=*)
+        opt_opt="`echo "${1}" | sed 's/=.*//' | tr A-Z a-z`"
+        opt_arg="`echo "${1}" | sed 's/.*=//'`"
+        ;;
+      -*)
+        opt_opt="`echo "-${1}" | tr A-Z a-z`"
+        opt_opt="`echo "${opt_opt}" | sed -e 's/^--/-/'`"
+        opt_arg="`echo "${2}" | sed 's/^-.*//'`"
+        ;;
+      *)
+        opt_opt= 
+        opt_arg=
+        ;;
+    esac
+
+    case "${opt_opt}" in
+      -c)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_CASEID="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -comp)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_COMPILER="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -debug)
+          my_USE_DEBUG=yes
+          [ "X${opt_arg}" != "X" ] && my_USE_DEBUG="`getYesNo "${opt_arg}"`"
+          opt_flg=$(( ${opt_flg} + 1 ))
+        ;;
+      -env)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_COAWST_ENV="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -j)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_PARMAKE_NCPUS="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -m)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_MODFILES="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -nocompile)
+          my_DO_COMPILE=0
+          opt_flg=$(( ${opt_flg} + 1 ))
+        ;;
+      -noclean)
+          my_CLEAN=0
+          opt_flg=$(( ${opt_flg} + 1 ))
+        ;;
+      -nocleanwrf)
+          my_CLEANWRF=0
+          opt_flg=$(( ${opt_flg} + 1 ))
+        ;;
+      -nocleanwps)
+          my_CLEANWPS=0
+          opt_flg=$(( ${opt_flg} + 1 ))
+        ;;
+      -vers)
+          my_VERSIONING=1
+          opt_flg=$(( ${opt_flg} + 1 ))
+        ;;
+      -wps)
+          my_BUILD_WPS=yes
+          [ "X${opt_arg}" != "X" ] && my_BUILD_WPS="`getYesNo "${opt_arg}"`"
+          opt_flg=$(( ${opt_flg} + 1 ))
+        ;;
+###### MPI/OPENMP related options ######
+      -mpi)
+          my_USE_MPI=yes
+          [ "X${opt_arg}" != "X" ] && my_USE_MPI="`getYesNo "${opt_arg}"`"
+          opt_flg=$(( ${opt_flg} + 1 ))
+        ;;
+      -mpif90)
+          my_USE_MPIF90=yes
+          [ "X${opt_arg}" != "X" ] && my_USE_MPIF90="`getYesNo "${opt_arg}"`"
+          opt_flg=$(( ${opt_flg} + 1 ))
+        ;;
+      -omp)
+          my_USE_OPENMP=yes
+          [ "X${opt_arg}" != "X" ] && my_USE_OPENMP="`getYesNo "${opt_arg}"`"
+          opt_flg=$(( ${opt_flg} + 1 ))
+        ;;
+###### COAWST/ROMS/WRF related options ######
+      -app)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_ROMS_APPLICATION="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -root)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_MY_ROOT_DIR="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -proj)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_MY_PROJECT_DIR="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -src)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_MY_ROMS_SRC="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -compilers)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_COMPILERS="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -hdr)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_MY_HEADER_DIR="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -ana)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_MY_ANALYTICAL_DIR="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -scratch)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_SCRATCH_DIR="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -cpp)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_MY_CPP_FLAGS="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -ngrids)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_NestedGrids="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -wsrc)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_WRF_DIR="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -swnsrc)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_SWAN_DIR="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+###### NetCDF-3/4 related options ######
+      -ncdf3)
+          my_USE_NETCDF3=yes
+          [ "X${opt_arg}" != "X" ] && my_USE_NETCDF3="`getYesNo "${opt_arg}"`"
+          opt_flg=$(( ${opt_flg} + 1 ))
+        ;;
+      -ncdf4)
+          my_USE_NETCDF4=yes
+          [ "X${opt_arg}" != "X" ] && my_USE_NETCDF4="`getYesNo "${opt_arg}"`"
+          opt_flg=$(( ${opt_flg} + 1 ))
+        ;;
+      -large)
+          my_USE_LARGE=yes
+          [ "X${opt_arg}" != "X" ] && my_USE_LARGE="`getYesNo "${opt_arg}"`"
+          opt_flg=$(( ${opt_flg} + 1 ))
+        ;;
+      -ncdf_root)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_NETCDF_ROOT="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -ncdf_conf)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_NC_CONFIG="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -ncdf_inc)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_NETCDF_INCDIR="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -ncdf_lib)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_NETCDF_LIBDIR="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+###### HDF5 related options ######
+      -hdf5)
+          my_USE_HDF5=yes
+          [ "X${opt_arg}" != "X" ] && my_USE_HDF5="`getYesNo "${opt_arg}"`"
+          opt_flg=$(( ${opt_flg} + 1 ))
+        ;;
+      -hdf5_root)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_HDF5_ROOT="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -hdf5_inc)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_HDF5_INCDIR="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -hdf5_lib)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_HDF5_LIBDIR="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+###### Parallel I/O and Parallel NetCDF options ######
+      -pio)
+          my_USE_PARALLEL_IO=yes
+          [ "X${opt_arg}" != "X" ] && my_USE_PARALLEL_IO="`getYesNo "${opt_arg}"`"
+          opt_flg=$(( ${opt_flg} + 1 ))
+        ;;
+      -pncdf)
+          my_USE_PNETCDF=yes
+          [ "X${opt_arg}" != "X" ] && my_USE_PNETCDF="`getYesNo "${opt_arg}"`"
+          opt_flg=$(( ${opt_flg} + 1 ))
+        ;;
+      -pncdf_root)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_PNETCDF_ROOT="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -pncdf_inc)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_PNETCDF_INCDIR="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -pncdf_lib)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_PNETCDF_LIBDIR="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+###### MCT toolkit options ######
+      -mct)
+          my_USE_MCT=yes
+          [ "X${opt_arg}" != "X" ] && my_USE_MCT="`getYesNo "${opt_arg}"`"
+          opt_flg=$(( ${opt_flg} + 1 ))
+        ;;
+      -mct_root)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_MCT_ROOT="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -mct_inc)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_MCT_INCDIR="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -mct_lib)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_MCT_LIBDIR="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+###### ARPACK/PARPACK options ######
+      -arp)
+          my_USE_ARPACK=yes
+          [ "X${opt_arg}" != "X" ] && my_USE_ARPACK="`getYesNo "${opt_arg}"`"
+          opt_flg=$(( ${opt_flg} + 1 ))
+        ;;
+      -arp_dir)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_ARPACK_ROOT="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -arp_inc)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_ARPACK_INCDIR="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -arp_lib)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_ARPACK_LIBDIR="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -parp)
+          my_USE_PARPACK=yes
+          [ "X${opt_arg}" != "X" ] && my_USE_PARPACK="`getYesNo "${opt_arg}"`"
+          opt_flg=$(( ${opt_flg} + 1 ))
+        ;;
+      -parp_dir)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_PARPACK_ROOT="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -parp_inc)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_PARPACK_INCDIR="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -parp_lib)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_PARPACK_LIBDIR="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+###### ESMF options ######
+      -esmf)
+          my_USE_ESMF=yes
+          [ "X${opt_arg}" != "X" ] && my_USE_ESMF="`getYesNo "${opt_arg}"`"
+          opt_flg=$(( ${opt_flg} + 1 ))
+        ;;
+      -esmf_dir)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_ESMF_ROOT="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -esmf_inc)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_ESMF_INCDIR="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -esmf_lib)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_ESMF_LIBDIR="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+###### Jasper options (if Grib2 is to be used) ######
+      -jsp)
+          my_USE_JASPER=yes
+          [ "X${opt_arg}" != "X" ] && my_USE_JASPER="`getYesNo "${opt_arg}"`"
+          opt_flg=$(( ${opt_flg} + 1 ))
+        ;;
+      -jsp_dir)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_JASPER_ROOT="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -jsp_inc)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_JASPER_INCDIR="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -jsp_lib)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_JASPER_LIBDIR="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+###### NCAR/NCL options (for WPS) ######
+      -ncl)
+          my_USE_NCL=yes
+          [ "X${opt_arg}" != "X" ] && my_USE_NCL="`getYesNo "${opt_arg}"`"
+          opt_flg=$(( ${opt_flg} + 1 ))
+        ;;
+      -ncl_dir)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_NCL_ROOT="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -ncl_inc)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_NCL_INCDIR="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -ncl_lib)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_NCL_LIBDIR="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+      -ncl_xlibs)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_NCL_XLIBS="${opt_arg}"
+            opt_flg=$(( ${opt_flg} + 1 ))
+          fi
+        ;;
+######
+      -h|-help)
+          usage
+        ;;
+    esac
+    shift
+  done
+
+  [ ${opt_flg} -le 0 ] && usage
+
+  DO_COMPILE="${my_DO_COMPILE:-1}"
+
+  # Next assign the values using the my_* variables (if they are set).
+  CLEAN="${my_CLEAN:-${CLEAN}}"
+  CLEANWRF="${my_CLEANWRF:-${CLEANWRF}}"
+  CLEANWPS="${my_CLEANWPS:-${CLEANWPS}}"
+  PARMAKE_NCPUS="${my_PARMAKE_NCPUS:-${PARMAKE_NCPUS}}"
+  MODFILES="${my_MODFILES:-${MODFILES}}"
+  USE_DEBUG="${my_USE_DEBUG:-${USE_DEBUG}}"
+  COMPILER="${my_COMPILER:-${COMPILER}}"
+  CASEID="${my_CASEID:-}"
+  VERSIONING="${my_VERSIONING:-${VERSIONING}}"
+  BUILD_WPS="${my_BUILD_WPS:-${BUILD_WPS}}"
+
+  USE_MPI="${my_USE_MPI:-${USE_MPI}}"
+  USE_MPIF90="${my_USE_MPIF90:-${USE_MPIF90}}"
+  USE_OPENMP="${my_USE_OPENMP:-${USE_OPENMP}}"
+
+  ROMS_APPLICATION="${my_ROMS_APPLICATION:-${ROMS_APPLICATION}}"
+  MY_ROOT_DIR="${my_MY_ROOT_DIR:-${MY_ROOT_DIR}}"
+  MY_PROJECT_DIR="${my_MY_PROJECT_DIR:-${MY_PROJECT_DIR}}"
+  MY_ROMS_SRC="${my_MY_ROMS_SRC:-${MY_ROMS_SRC}}"
+  COMPILERS="${my_COMPILERS:-${COMPILERS}}"
+  MY_HEADER_DIR="${my_MY_HEADER_DIR:-${MY_HEADER_DIR}}"
+  MY_ANALYTICAL_DIR="${my_MY_ANALYTICAL_DIR:-${MY_ANALYTICAL_DIR}}"
+  SCRATCH_DIR="${my_SCRATCH_DIR:-${SCRATCH_DIR}}"
+  MY_CPP_FLAGS="${my_MY_CPP_FLAGS:-${MY_CPP_FLAGS}}"
+  NestedGrids="${my_NestedGrids:-${NestedGrids}}"
+  WRF_DIR="${my_WRF_DIR:-${WRF_DIR}}"
+  SWAN_DIR="${my_SWAN_DIR:-${SWAN_DIR}}"
+
+  if [ "${my_USE_NETCDF3:-no}" = "yes" -a "${my_USE_NETCDF4:-no}" = "yes" ]; then
+    echo " ### WARNING: in ParseArgs"
+    echo "     Only one of [USE_NETCDF3, USE_NETCDF4] can be set:"
+    echo "        USE_NETCDF3 = "${my_USE_NETCDF3:-no}"
+    echo "        USE_NETCDF4 = "${my_USE_NETCDF4:-no}"
+    echo "     Resetting: USE_NETCDF3=no"
+    my_USE_NETCDF3="no"
+  elif [ "${my_USE_NETCDF3:-no}" = "yes" ]; then
+    my_USE_NETCDF3="yes"
+    my_USE_NETCDF4="no"
+  else
+    my_USE_NETCDF3="no"
+    my_USE_NETCDF4="yes"
+  fi
+
+  USE_NETCDF3="${my_USE_NETCDF3:-${USE_NETCDF3}}"
+  USE_NETCDF4="${my_USE_NETCDF4:-${USE_NETCDF4}}"
+  USE_LARGE="${my_USE_LARGE:-${USE_LARGE}}"
+  NETCDF_ROOT="${my_NETCDF_ROOT:-${NETCDF_ROOT}}"
+  NC_CONFIG="${my_NC_CONFIG:-${NC_CONFIG}}"
+  NETCDF_INCDIR="${my_NETCDF_INCDIR:-${NETCDF_INCDIR}}"
+  NETCDF_LIBDIR="${my_NETCDF_LIBDIR:-${NETCDF_LIBDIR}}"
+
+  USE_HDF5="${my_USE_HDF5:-${USE_HDF5}}"
+  HDF5_ROOT="${my_HDF5_ROOT:-${HDF5_ROOT}}"
+  HDF5_INCDIR="${my_HDF5_INCDIR:-${HDF5_INCDIR}}"
+  HDF5_LIBDIR="${my_HDF5_LIBDIR:-${HDF5_LIBDIR}}"
+
+  USE_PARALLEL_IO="${my_USE_PARALLEL_IO:-${USE_PARALLEL_IO}}"
+  USE_PNETCDF="${my_USE_PNETCDF:-${USE_PNETCDF}}"
+  PNETCDF_ROOT="${my_PNETCDF_ROOT:-${PNETCDF_ROOT}}"
+  PNETCDF_INCDIR="${my_PNETCDF_INCDIR:-${PNETCDF_INCDIR}}"
+  PNETCDF_LIBDIR="${my_PNETCDF_LIBDIR:-${PNETCDF_LIBDIR}}"
+
+  USE_MCT="${my_USE_MCT:-${USE_MCT}}"
+  MCT_ROOT="${my_MCT_ROOT:-${MCT_ROOT}}"
+  MCT_INCDIR="${my_MCT_INCDIR:-${MCT_INCDIR}}"
+  MCT_LIBDIR="${my_MCT_LIBDIR:-${MCT_LIBDIR}}"
+
+  USE_ARPACK="${my_USE_ARPACK:-${USE_ARPACK}}"
+  ARPACK_ROOT="${my_ARPACK_ROOT:-${ARPACK_ROOT}}"
+  ARPACK_INCDIR="${my_ARPACK_INCDIR:-${ARPACK_INCDIR}}"
+  ARPACK_LIBDIR="${my_ARPACK_LIBDIR:-${ARPACK_LIBDIR}}"
+
+  USE_PARPACK="${my_USE_PARPACK:-${USE_PARPACK}}"
+  PARPACK_ROOT="${my_PARPACK_ROOT:-${PARPACK_ROOT}}"
+  PARPACK_INCDIR="${my_PARPACK_INCDIR:-${PARPACK_INCDIR}}"
+  PARPACK_LIBDIR="${my_PARPACK_LIBDIR:-${PARPACK_LIBDIR}}"
+
+  USE_ESMF="${my_USE_ESMF:-${USE_ESMF}}"
+  ESMF_ROOT="${my_ESMF_ROOT:-${ESMF_ROOT}}"
+  ESMF_INCDIR="${my_ESMF_INCDIR:-${ESMF_INCDIR}}"
+  ESMF_LIBDIR="${my_ESMF_LIBDIR:-${ESMF_LIBDIR}}"
+
+  USE_JASPER="${my_USE_JASPER:-${USE_JASPER}}"
+  JASPER_ROOT="${my_JASPER_ROOT:-${JASPER_ROOT}}"
+  JASPER_INCDIR="${my_JASPER_INCDIR:-${JASPER_INCDIR}}"
+  JASPER_LIBDIR="${my_JASPER_LIBDIR:-${JASPER_LIBDIR}}"
+
+  USE_NCL="${my_USE_NCL:-${USE_NCL}}"
+  NCL_ROOT="${my_NCL_ROOT:-${NCL_ROOT}}"
+  NCL_INCDIR="${my_NCL_INCDIR:-${NCL_INCDIR}}"
+  NCL_LIBDIR="${my_NCL_LIBDIR:-${NCL_LIBDIR}}"
+  NCL_XLIBS="${my_NCL_XLIBS:-${NCL_XLIBS}}"
+
+  ##########
+  # Get all other coawst defaults not supplied by COAWST_ENV,
+  # coawst_environment.sh or by ParseArgs.
+  CoawstDefaults
+
+  ##########
+  # Adjust all the USE_* variables to a yes/no value.
+  Adjust_YESNOVars
+
+  return 0
+}
+
+CoawstDefaults()
+{
+  Get_LibName
+
+  CLEAN="${CLEAN:-1}"
+  CLEANWRF="${CLEANWRF:-1}"
+  CLEANWPS="${CLEANWPS:-1}"
+  PARMAKE_NCPUS="${PARMAKE_NCPUS:-}"
+
+  MODFILES="${MODFILES:-}"
+
+  USE_DEBUG="${USE_DEBUG:-no}"
+    USE_DEBUG="`getYesNo "${USE_DEBUG}"`"
+
+  USE_LARGE="${USE_LARGE:-yes}"
+    USE_LARGE="`getYesNo "${USE_LARGE}"`"
+
+  COMPILER="${COMPILER:-ifort}"
+
+  COAWST_ENV="${COAWST_ENV:-}"
+
+  CASEID="${CASEID:-}"
+
+  DO_COMPILE="${DO_COMPILE:-1}"
+
+  VERSIONING="${VERSIONING:-0}"
+  
+  BUILD_WPS="${BUILD_WPS:-no}"
+    BUILD_WPS="`getYesNo "${BUILD_WPS}"`"
+
+  ##########
+  # The MPI/OPENMP system
+  USE_MPI="${USE_MPI:-no}"
+    USE_MPI="`getYesNo "${USE_MPI}"`"
+  USE_MPIF90="${USE_MPIF90:-no}"
+    USE_MPIF90="`getYesNo "${USE_MPIF90}"`"
+  USE_OPENMP="${USE_OPENMP:-no}"
+    USE_OPENMP="`getYesNo "${USE_OPENMP}"`"
+
+  # Set the CPP option defining the particular application. This will
+  # determine the name of the ".h" header file with the application
+  # CPP definitions.
+  ROMS_APPLICATION="${ROMS_APPLICATION:-}"
+
+  # Set a local environmental variable to define the path to the directories
+  # where all this project's files are kept.
+  MY_ROOT_DIR="${MY_ROOT_DIR:-${HOME}/COAWST}"
+  MY_PROJECT_DIR="${MY_PROJECT_DIR:-${MY_ROOT_DIR}}"
+
+  # The path to the user's local current ROMS source code.
+  #
+  # If using svn locally, this would be the user's Working Copy Path (WCPATH).
+  # Note that one advantage of maintaining your source code locally with svn
+  # is that when working simultaneously on multiple machines (e.g. a local
+  # workstation, a local cluster and a remote supercomputer) you can checkout
+  # the latest release and always get an up-to-date customized source on each
+  # machine. This script is designed to more easily allow for differing paths
+  # to the code and inputs on differing machines.
+  MY_ROMS_SRC="${MY_ROMS_SRC:-${MY_ROOT_DIR}}"
+  ROMS_DIR="${ROMS_DIR:-${MY_ROMS_SRC}/ROMS}"
+  WRF_DIR="${WRF_DIR:-${MY_ROOT_DIR}/WRF}"
+  SWAN_DIR="${SWAN_DIR:-${MY_ROOT_DIR}/SWAN}"
+
+  # Set path of the directory containing makefile configuration (*.mk) files.
+  # The user has the option to specify a customized version of these files
+  # in a different directory than the one distributed with the source code,
+  # ${MY_ROMS_SCR}/Compilers. If this is the case, the you need to keep
+  # these configurations files up-to-date.
+  COMPILERS="${COMPILERS:-${MY_ROMS_SRC}/Compilers}"
+
+  # The path to the users header file and analytical source files, if any.
+  # See the templates in User/Functionals.
+  #
+  # If applicable, use the MY_ANALYTICAL_DIR directory to place your
+  # customized biology model header file (like fennel.h, nemuro.h, ecosim.h,
+  # etc).
+  MY_HEADER_DIR="${MY_HEADER_DIR:-${MY_PROJECT_DIR}/Include}"
+  MY_ANALYTICAL_DIR="${MY_ANALYTICAL_DIR:-${MY_PROJECT_DIR}/Functionals}"
+
+  # Put the binaries to execute in the following directory.
+  # This is used internally by the makefile(s), and it is set
+  # that always is the same as the MY_PROJECT_DIR directory.
+  BINDIR="${MY_PROJECT_DIR}"
+
+  # Put the f90 files in a project specific Build directory to avoid conflict
+  # with other projects.
+  #SCRATCH_DIR=${SCRATCH_DIR:-${MY_PROJECT_DIR}/Build}
+  SCRATCH_DIR="${SCRATCH_DIR:-${MY_ROMS_SRC}/Build}"
+  SCRATCH_DIR="$(echo "${SCRATCH_DIR}" | sed -e "s/\/[bB][uU][iI][lL][dD]$//")"
+  SCRATCH_DIR="${SCRATCH_DIR}/Build"
+
+  # Set tunable CPP options.
+  #
+  # Sometimes it is desirable to activate one or more CPP options to run
+  # different variants of the same application without modifying its header
+  # file. If this is the case, specify each options here using the -D syntax.
+  # Notice also that you need to use shell's quoting syntax to enclose the
+  # definition.  Both single or double quotes works. For example, to write
+  # time-averaged fields set:
+  #
+  #     MY_CPP_FLAGS="-DAVERAGES"
+  MY_CPP_FLAGS="${MY_CPP_FLAGS:-}"
+
+  # Set number of Nested grids for ROMS and or SWAN. This feature is activated
+  # with the cpp option REFINED_GRID. If you are using both ROMS and SWAN, 
+  # you need to have the same number of grids for both models.
+  NestedGrids=${NestedGrids:-1}
+
+  # Other user defined environmental variables. See the ROMS makefile for
+  # details on other options the user might want to set here. Be sure to
+  # leave the switched meant to be off set to an empty string or commented
+  # out. Any string value (including off) will evaluate to TRUE in
+  # conditional if-stamentents.
+
+  # Notice that when the USE_NETCDF4 macro is activated, we need a
+  # serial and parallel version of the NetCDF-4/HDF5 library. The
+  # parallel library uses parallel I/O through MPI-I/O so we need
+  # compile also with the MPI library. This is fine in ROMS
+  # distributed-memory applications.  However, in serial or
+  # shared-memory ROMS applications we need to use the serial
+  # version of the NetCDF-4/HDF5 to avoid conflicts with the
+  # compiler. Recall also that the MPI library comes in several
+  # flavors: MPICH, MPICH2, OPENMPI.
+
+  ##########
+  # NetCDF-3/NetCDF-4
+  USE_NETCDF3="${USE_NETCDF3:-no}"
+    USE_NETCDF3="`getYesNo "${USE_NETCDF3}"`"
+  USE_NETCDF4="${USE_NETCDF4:-yes}"
+    USE_NETCDF4="`getYesNo "${USE_NETCDF4}"`"
+  if [ "${USE_NETCDF3:-no}" = "yes" -a "${USE_NETCDF4:-no}" = "yes" ]; then
+    echo " ### WARNING: in CoawstDefaults"
+    echo "     Only one of [USE_NETCDF3, USE_NETCDF4] can be set:"
+    echo "        USE_NETCDF3 = ${USE_NETCDF3:-no}"
+    echo "        USE_NETCDF4 = ${USE_NETCDF4:-no}"
+    echo "     Resetting: USE_NETCDF3=no"
+    USE_NETCDF3="no"
+  elif [ "${USE_NETCDF3:-no}" = "yes" ]; then
+    USE_NETCDF3="yes"
+    USE_NETCDF4="no"
+  else
+    USE_NETCDF3="no"
+    USE_NETCDF4="yes"
+  fi
+  
+  NETCDF_ROOT=
+  if [ "${USE_NETCDF3:-no}" = "yes" ]; then
+    NC_CONFIG=
+    NETCDF_INCDIR="${NETCDF_INCDIR:-${NETCDF_ROOT:+${NETCDF_ROOT}/include/netcdf-3}}"
+    NETCDF_LIBDIR="${NETCDF_LIBDIR:-${NETCDF_ROOT:+${NETCDF_ROOT}/${libname}/netcdf-3}}"
+  else
+    NC_CONFIG="${NC_CONFIG:-${NETCDF_ROOT:+${NETCDF_ROOT}/bin/nc-config}}"
+    NETCDF_INCDIR="${NETCDF_INCDIR:-${NETCDF_ROOT:+${NETCDF_ROOT}/include}}"
+    NETCDF_LIBDIR="${NETCDF_LIBDIR:-${NETCDF_ROOT:+${NETCDF_ROOT}/${libname}}}"
+  fi
+
+  ##########
+  # HDF5
+  USE_HDF5="${USE_HDF5:-no}"
+    USE_HDF5="`getYesNo "${USE_HDF5}"`"
+  HDF5_ROOT="${HDF5_ROOT:-${NETCDF_ROOT:+${NETCDF_ROOT}}}"
+  HDF5_INCDIR="${HDF5_INCDIR:-${HDF5_ROOT:+${HDF5_ROOT}/include}}"
+  HDF5_LIBDIR="${HDF5_LIBDIR:-${HDF5_ROOT:+${HDF5_ROOT}/${libname}}}"
+
+  ##########
+  # PARALLEL I/O - PNETCDF
+  USE_PARALLEL_IO="${USE_PARALLEL_IO:-no}"
+    USE_PARALLEL_IO="`getYesNo "${USE_PARALLEL_IO}"`"
+  USE_PNETCDF="${USE_PNETCDF:-no}"
+    USE_PNETCDF="`getYesNo "${USE_PNETCDF}"`"
+  PNETCDF_ROOT="${PNETCDF_ROOT:-${NETCDF_ROOT:+${NETCDF_ROOT}}}"
+  PNETCDF_INCDIR="${PNETCDF_INCDIR:-${PNETCDF_ROOT:+${PNETCDF_ROOT}/include}}"
+  PNETCDF_LIBDIR="${PNETCDF_LIBDIR:-${PNETCDF_ROOT:+${PNETCDF_ROOT}/${libname}}}"
+
+  ##########
+  # MCT coupler (can be serial or parallel)
+  USE_MCT="${USE_MCT:-no}"
+    USE_MCT="`getYesNo "${USE_MCT}"`"
+  #MCT_ROOT="${MCT_ROOT:-${MY_ROMS_SRC}/Lib/MCT}"
+  MCT_ROOT=
+  MCT_INCDIR="${MCT_INCDIR:-${MCT_ROOT:+${MCT_ROOT}/include}}"
+  MCT_LIBDIR="${MCT_LIBDIR:-${MCT_ROOT:+${MCT_ROOT}/${libname}}}"
+
+  ##########
+  # ARPACK
+  USE_ARPACK="${USE_ARPACK:-no}"
+    USE_ARPACK="`getYesNo "${USE_ARPACK}"`"
+  ARPACK_ROOT="${ARPACK_ROOT:-${MY_ROMS_SRC}/Lib/ARPACK}"
+  ARPACK_INCDIR="${ARPACK_INCDIR:-${ARPACK_ROOT:+${ARPACK_ROOT}/include}}"
+  ARPACK_LIBDIR="${ARPACK_LIBDIR:-${ARPACK_ROOT:+${ARPACK_ROOT}/${libname}}}"
+
+  ##########
+  # PARPACK
+  USE_PARPACK="${USE_PARPACK:-no}"
+    USE_PARPACK="`getYesNo "${USE_PARPACK}"`"
+  PARPACK_ROOT="${PARPACK_ROOT:-${MY_ROMS_SRC}/Lib/ARPACK}"
+  PARPACK_INCDIR="${PARPACK_INCDIR:-${PARPACK_ROOT:+${PARPACK_ROOT}/include}}"
+  PARPACK_LIBDIR="${PARPACK_LIBDIR:-${PARPACK_ROOT:+${PARPACK_ROOT}/${libname}}}"
+
+  ##########
+  # ESMF
+  USE_ESMF="${USE_ESMF:-no}"
+    USE_ESMF="`getYesNo "${USE_ESMF}"`"
+  ESMF_ROOT="${ESMF_ROOT:-}"
+  ESMF_INCDIR="${ESMF_INCDIR:-${ESMF_ROOT:+${ESMF_ROOT}/include}}"
+  ESMF_LIBDIR="${ESMF_LIBDIR:-${ESMF_ROOT:+${ESMF_ROOT}/${libname}}}"
+
+  ##########
+  # GRIB2/JASPER
+  USE_JASPER="${USE_JASPER:-no}"
+    USE_JASPER="`getYesNo "${USE_JASPER}"`"
+  JASPER_ROOT="${JASPER_ROOT:-/usr}"
+  JASPER_INCDIR="${JASPER_INCDIR:-${JASPER_ROOT:+${JASPER_ROOT}/include/jasper}}"
+  JASPER_LIBDIR="${JASPER_LIBDIR:-${JASPER_ROOT:+${JASPER_ROOT}/${libname}}}"
+
+  ##########
+  # NCAR/NCL
+  USE_NCL="${USE_NCL:-no}"
+    USE_NCL="`getYesNo "${USE_NCL}"`"
+  NCL_ROOT="${NCL_ROOT:-}"
+  NCL_INCDIR="${NCL_INCDIR:-${NCL_ROOT:+${NCL_ROOT}/include}}"
+  NCL_LIBDIR="${NCL_LIBDIR:-${NCL_ROOT:+${NCL_ROOT}/${libname}}}"
+  NCL_XLIBS="${NCL_XLIBS:-}"
+}
+
+Get_LibName()
+{
+  local UNAME=
+
+  libname="${libname:-}"
+
+  if [ -z "${libname:-}" ]; then
+    libname="lib"
+    UNAME="`which uname  2>&1 | grep -v "no uname"`"
+    if [ "${UNAME:-UNSET}" != "UNSET" ]; then
+      [ "`${UNAME} -m`" = "x86_64" ] && libname="lib64"
+    else
+      UNAME="`which arch  2>&1 | grep -v "no arch"`"
+      if [ "${UNAME:-UNSET}" != "UNSET" ]; then
+        [ "`${UNAME}`" = "x86_64" ] && libname="lib64"
+      fi
+    fi
+  fi
+
+  export libname
+}
+
+Get_Compiler()
+{
+  local COMP="" SAV_COMP=""
+
+  COMP=`basename "${1}"`
+  SAV_COMP="${COMP}"
+  COMP=`which ${COMP}  2>&1 | grep -v "no ${COMP}"`
+  COMP=`basename "${COMP}"`
+
+  # The fortran compiler
+  case "${COMP}" in
+    ifc|ifort)
+      COMPILER=${COMP}
+      COMPSYS=intel
+      ;;
+    g77|gfortran)
+      COMPILER=${COMP}
+      COMPSYS=gnu
+      ;;
+    pgi|pgf90)
+      COMPILER=${COMP}
+      COMPSYS=pgi
+      ;;
+    path)
+      COMPILER=${COMP}
+      COMPSYS=path
+      ;;
+    xlf)
+      COMPILER=${COMP}
+      COMPSYS=xlf
+      ;;
+    *)
+      COMPILER=
+      COMPSYS=
+      echo " ### ERROR:: in Get_Compiler"
+      echo "       The supplied value for:"
+      echo "       COMPILER = ${SAV_COMP}"
+      echo "       is not a valid compiler option (${SAV_COMP} is not in the PATH)."
+      echo "       This variable is essential for this script to be executed properly."
+      echo "     Exiting now ..."
+      echo
+      exit 1
+      ;;
+  esac
+}
+
+Get_MpiCompiler()
+{
+  local COMP COMP_BINDIR chkCOMP
+
+  unset COMPILER_MPIF90 COMPILER_MPIF77 COMPILER_MPICC
+  unset MPISYS MPIVER
+
+  COMP=`basename "${1}"`
+  COMP=`which ${COMP}  2>&1 | grep -v "no ${COMP}"`
+  COMP=`basename "${COMP}"`
+  if [ "${COMP:-UNDEF}" != "UNDEF" ]; then
+    COMP_BINDIR="`which ${COMP}  2>&1`"
+    COMP_BINDIR="`dirname "${COMP_BINDIR}"`"
+  fi
+
+  # The fortran compiler
+  case "${COMP}" in
+    mpif90) COMPILER_MPIF90="${COMP}" ;;
+    mpif77) COMPILER_MPIF77="${COMP}" ;;
+     mpicc) COMPILER_MPICC="${COMP}"  ;;
+    *)
+      echo " ### ERROR:: Get_MpiCompiler"
+      echo "       The supplied value for:"
+      echo "         COMPILER_MPI = ${COMP:-UNDEF}"
+      echo "       is not a valid compiler option (${COMP} is not in the PATH)."
+      echo "       This variable is essential for this script to be executed properly."
+      echo "     Exiting now ..."
+      echo
+      exit 1
+      ;;
+  esac
+
+  chkCOMP="`${COMP} -showme 2>&1 | grep -v showme | grep "${COMPILER:-UNDEF}"`"
+  [ "${chkCOMP:-UNDEF}" = "UNDEF" ] && \
+    chkCOMP="`${COMP} -show 2>&1 | grep -v show | grep "${COMPILER:-UNDEF}"`"
+  if [ "${chkCOMP:-UNDEF}" = "UNDEF" ]; then
+    echo " ### ERROR:: Get_MpiCompiler"
+    echo "       The supplied value for:"
+    echo "         COMPILER_MPI = ${COMP:-UNDEF}"
+    echo "       is incompatible with the compiler:"
+    echo "             COMPILER = ${COMPILER:-UNDEF}"
+    echo "     Exiting now ..."
+    echo
+    exit 1
+  fi
+
+  # Get the values of the MPISYS/MPIVER variables
+  if [ "${MPI_SUFFIX:-UNDEF}" != "UNDEF" ]; then
+    MPISYS="`echo ${MPI_SUFFIX} | /bin/sed 's/_//g' | tr [A-Z] [a-z]`"
+  elif [ -x ${COMP_BINDIR}/ompi_info ]; then
+    MPISYS="openmpi"
+  elif [ -x ${COMP_BINDIR}/mpiname ]; then
+    MPISYS="`${COMP_BINDIR}/mpiname 2>&1 | tr [A-Z] [a-z]`"
+  elif [ -x ${COMP_BINDIR}/mpich2version ]; then
+    MPISYS="`${COMP_BINDIR}/mpich2version 2>&1 | grep -i version:`"
+    MPISYS="`echo ${MPISYS} | awk '{print $1}' | tr [A-Z] [a-z]`"
+  elif [ -x ${COMP_BINDIR}/mpichversion ]; then
+    MPISYS="`${COMP_BINDIR}/mpichversion 2>&1 | grep -i version:`"
+    MPISYS="`echo ${MPISYS} | awk '{print $1}' | tr [A-Z] [a-z]`"
+  else
+    unset MPISYS
+  fi
+
+  case "${MPISYS}" in
+    openmpi)
+      MPIVER="`${COMP_BINDIR}/ompi_info 2>&1 | grep -Ei "open.*mpi:" | awk '{print $3}'`"
+    ;;
+    mpich2|mvapich2)
+      if [ -x ${COMP_BINDIR}/mpich2version ]; then
+        MPIVER="`${COMP_BINDIR}/mpich2version 2>&1 | grep -i version:`"
+        MPIVER="`echo ${MPIVER} | awk '{print $3}'`"
+      else
+        MPIVER="`${COMP_BINDIR}/mpicc -v 2>&1 | grep -Ei "mpicc.*for" | tr [A-Z] [a-z]`"
+        MPIVER="`echo ${MPIVER} | sed 's/.*version//g' | awk '{print $1}'`"
+      fi
+    ;;
+    mpich|mvapich)
+      if [ -x ${COMP_BINDIR}/mpichversion ]; then
+        MPIVER="`${COMP_BINDIR}/mpichversion 2>&1 | grep -i version:`"
+        MPIVER="`echo ${MPIVER} | awk '{print $3}'`"
+      else
+        MPIVER="`${COMP_BINDIR}/mpicc -v 2>&1 | grep -Ei "mpicc.*for" | tr [A-Z] [a-z]`"
+        MPIVER="`echo ${MPIVER} | sed 's/.*for//g' | awk '{print $1}'`"
+      fi
+    ;;
+    *)
+      unset MPIVER
+      ;;
+  esac
+}
+
+Check_Includes()
+{
+  local -i retval=0
+  local my_dir="" my_files="" chk_file=""
+  local my_err="" err_param=""
+
+  [ $# -lt 2 ] && { retval=1; return ${retval}; }
+
+  my_dir="`echo ${1} | /bin/sed -e 's/[ \t]//g'`"
+  my_files="${2}"
+
+  err_param="`echo "${3}" | tr [A-Z] [a-z]`"
+  case "${err_param}" in
+    err|error|fail|failure) my_err="error" ;;
+              warn|warning) my_err="warning"  ;;
+                         *) my_err=""  ;; # DEFAULT
+  esac
+
+  for ifl in ${my_files}
+  do
+    chk_file="${my_dir}/${ifl}"
+    checkFILE -r "${chk_file}"
+    retval=$?
+    [ ${retval} -ne 0 ] && break
+  done
+
+  if [ ${retval} -ne 0 ]; then
+    if [ "${my_err:-}" = "error" ]; then
+      echo " ### ERROR:: in Check_Includes"
+      echo "     Cannot locate the following essential header file:"
+      echo "        ${chk_file}"
+      echo "     Exiting now ..."
+      echo
+      exit ${retval}
+    elif [ "${my_err:-}" = "warning" ]; then
+      echo " ### WARNING: in Check_Includes"
+      echo "     Cannot locate the following essential header file:"
+      echo "        ${chk_file}"
+      echo
+    fi
+  fi
+
+  return ${retval}
+}
+
+Check_Libraries()
+{
+  local -i retval=0
+  local my_dir="" my_files="" chk_file="" chk_str=""
+  local my_err="" err_param=""
+
+  [ $# -lt 2 ] && { retval=1; return ${retval}; }
+
+  my_dir="`echo ${1} | /bin/sed -e 's/[ \t]//g'`"
+  my_files="${2}"
+
+  err_param="`echo "${3}" | tr [A-Z] [a-z]`"
+  case "${err_param}" in
+    err|error|fail|failure) my_err="error" ;;
+              warn|warning) my_err="warning"  ;;
+                         *) my_err=""  ;; # DEFAULT
+  esac
+
+  for ifl in ${my_files}
+  do
+    chk_file="${my_dir}/${ifl}"
+    chk_str="`find -L ${my_dir} -maxdepth 1 -name "${ifl}" 2>&1 | grep -vi "no.*such" | xargs`"
+    if [ "X${chk_str}" = "X" ]; then
+      retval=1
+      break
+    fi
+  done
+
+  if [ ${retval} -ne 0 ]; then
+    if [ "${my_err:-}" = "error" ]; then
+      echo " ### ERROR:: in Check_Libraries"
+      echo "     Cannot locate one or more of the following essential library files:"
+      echo "        ${chk_file}"
+      echo "     Exiting now ..."
+      echo
+      exit ${retval}
+    elif [ "${my_err:-}" = "warning" ]; then
+      echo " ### WARNING: in Check_Libraries"
+      echo "     Cannot locate one or more of the following essential library files:"
+      echo "        ${chk_file}"
+      echo
+    fi
+  fi
+
+  return ${retval}
+}
+
+Get_NetCDFVersion()
+{
+  local -i retval=0
+  local inp_file="/tmp/ncdf_cfile.c" out_file="/tmp/ncdf_ver"
+  local COMP= SAV_COMP=mpicc
+  local incs= libs= command= err_str=
+  local my_root= my_incdir= my_libdir=
+
+  NETCDF_VERSION=
+  NETCDF_MAJOR=
+  NETCDF_MINOR=
+  NETCDF_BUILD=
+  NETCDF_PARALLEL=
+
+  Get_LibName
+
+  [ "X${1}" != "X" ] && SAV_COMP="${1}"
+  case "`basename "${SAV_COMP}" | tr [A-Z] [a-z]`" in
+    intel|icc|ifc|ifort)
+      COMP="icc"
+      ;;
+    gnu|gcc|g++|g77|gfortran)
+      COMP="gcc"
+      ;;
+    pgi|pgcc|pgCC|pgf90)
+      COMP="pgcc"
+      ;;
+    mpi|mpicc|mpiCC|mpif77|mpif90)
+      COMP="mpicc"
+      ;;
+    *)
+      COMP=
+      ;;
+  esac
+
+  COMP=`which "${COMP}" 2>&1 | grep -v "no ${COMP}"`
+  checkPROG -r "${COMP:-}"
+  retval=$?
+  COMP=`basename "${COMP}"`
+  if [ ${retval} -ne 0 ]; then
+    echo " ### ERROR:: in Get_NetCDFVersion"
+    echo "     Need to supply a valid path to a C/C++/Fortran compiler."
+    echo "     User requested : COMP = ${SAV_COMP:-UNDEF}"
+    echo "     Currently using: COMP = ${COMP:-UNDEF}"
+    echo "     Exiting now ..."
+    echo
+    exit 1
+  fi
+
+  [ -d "${NETCDF_INCDIR:-}" ] && my_incdir="${NETCDF_INCDIR:-}"
+  Check_Includes "${my_incdir}" "netcdf.h" warning
+  retval=$?
+  if [ ${retval} -ne 0 ]; then
+    echo " ### ERROR:: in Get_NetCDFVersion"
+    echo "     Need to supply a valid path to the NetCDF include files"
+    echo "     via the environment variable NETCDF_INCDIR."
+    echo "     Currently NETCDF_INCDIR = ${NETCDF_INCDIR:-UNDEF}"
+    echo "     Exiting now ..."
+    echo
+    exit 1
+  fi
+
+  [ -d "${NETCDF_LIBDIR:-}" ] && my_libdir="${NETCDF_LIBDIR:-}"
+  Check_Libraries "${my_libdir}" "libnetcdf.*" warning
+  retval=$?
+  if [ ${retval} -ne 0 ]; then
+    echo " ### ERROR:: in Get_NetCDFVersion"
+    echo "     Need to supply a valid path to the NetCDF library files"
+    echo "     via the environment variable NETCDF_LIBDIR."
+    echo "     Currently NETCDF_LIBDIR = ${NETCDF_LIBDIR:-UNDEF}"
+    echo "     Exiting now ..."
+    echo
+    exit 1
+  fi
+
+  my_root="${NETCDF_ROOT:-}"
+  if [ -z "${my_root:-}" ]; then
+    if [ -n "${my_incdir:-}" -o -n "${my_libdir:-}" ]; then
+      [ "${my_incdir/\/include*/}" = "${my_libdir/\/${libname}*/}" ] && \
+        my_root="${my_incdir/\/include*/}"
+    fi
+  fi
+
+cat > ${inp_file} << EOF
+#include <stdio.h>
+#include <netcdf.h>
+
+main()
+{
+  printf("%s\n", nc_inq_libvers());
+}
+EOF
+
+  incs="-I${NETCDF_INCDIR}"
+  libs="-L${NETCDF_LIBDIR} -lnetcdf"
+  command="${COMP} ${incs} ${inp_file} ${libs} -o ${out_file}"
+  err_str=`${command} 2>&1`
+  retval=$?
+
+  if [ ${retval} -ne 0 ]; then
+    echo " ### ERROR:: in Get_NetCDFVersion"
+    echo "     Could not determine the NetCDF version because of compilation errors:"
+    echo "       ${command}"
+    echo
+    echo "     ${err_str}"
+    echo
+  else
+    if [ -x "${out_file}" ]; then
+      NETCDF_VERSION=`${out_file} | sed 's/[-_"]//g' | sed 's/.*ersion.*=\(.*\)/\1/'`
+      NETCDF_VERSION="`echo "${NETCDF_VERSION}" | awk '{printf $1}'`"
+      NETCDF_MAJOR="`echo ${NETCDF_VERSION} | /bin/sed 's/\./ /g' | awk '{printf $1}'`"
+      NETCDF_MINOR="`echo ${NETCDF_VERSION} | /bin/sed 's/\./ /g' | awk '{printf $2}'`"
+      NETCDF_BUILD="`echo ${NETCDF_VERSION} | /bin/sed 's/\./ /g' | awk '{printf $3}'`"
+      if [ "${NETCDF_MAJOR}" -ge 4 ]; then
+        if [ -x "${NC_CONFIG:-}" ]; then
+          my_ncconf="${NC_CONFIG:-}"
+        else
+          if [ -x "${my_root:-}/bin/nc-config" ]; then
+            my_ncconf="${my_root:-}/bin/nc-config"
+          fi
+        fi
+
+        # PnetCDF is required for classic/64-bit offset NetCDF files and parallel IO
+        if [ -n "${my_ncconf:+1}" ]; then
+          NETCDF_PARALLEL="`${my_ncconf} --has-pnetcdf`"
+          NETCDF_PARALLEL="`getYesNo "${NETCDF_PARALLEL}"`"
+          [ "${NETCDF_PARALLEL}" = "no" ] && unset NETCDF_PARALLEL
+        fi
+
+        # Parallel HDF5 is required for NetCDF-4 format files and parallel IO
+        if [ -z "${NETCDF_PARALLEL:-}" ]; then
+          [ -f "${my_incdir:-}/netcdf_par.h" ] && NETCDF_PARALLEL="yes"
+        fi
+      fi
+    fi
+  fi
+
+  [ -f "${inp_file}" ] && rm -f "${inp_file}"
+  [ -f "${out_file}" ] && rm -f "${out_file}"
+
+  return ${retval}
+}
+
+Get_HDF5Version()
+{
+  local -i retval=0
+  local inp_file="/tmp/pncdf_cfile.c" out_file="/tmp/pncdf_ver"
+  local COMP= SAV_COMP=mpicc
+  local incs= libs= command= err_str=
+  local my_incdir= my_libdir=
+
+  HDF5_VERSION=
+  HDF5_MAJOR=
+  HDF5_MINOR=
+  HDF5_BUILD=
+  HDF5_PARALLEL=
+
+  [ "X${1}" != "X" ] && SAV_COMP="${1}"
+  case "`basename "${SAV_COMP}" | tr [A-Z] [a-z]`" in
+    intel|icc|ifc|ifort)
+      COMP="icc"
+      ;;
+    gnu|gcc|g++|g77|gfortran)
+      COMP="gcc"
+      ;;
+    pgi|pgcc|pgCC|pgf90)
+      COMP="pgcc"
+      ;;
+    mpi|mpicc|mpiCC|mpif77|mpif90)
+      COMP="mpicc"
+      ;;
+    *)
+      COMP=
+      ;;
+  esac
+
+  COMP=`which "${COMP}" 2>&1 | grep -v "no ${COMP}"`
+  checkPROG -r "${COMP:-}"
+  retval=$?
+  COMP=`basename "${COMP}"`
+  if [ ${retval} -ne 0 ]; then
+    echo " ### ERROR:: in Get_HDF5Version"
+    echo "     Need to supply a valid path to a C/C++/Fortran compiler."
+    echo "     User requested : COMP = ${SAV_COMP:-UNDEF}"
+    echo "     Currently using: COMP = ${COMP:-UNDEF}"
+    echo "     Exiting now ..."
+    echo
+    exit 1
+  fi
+
+  [ -d "${HDF5_INCDIR:-}" ] && my_incdir="${HDF5_INCDIR:-}"
+#  my_files="hdf5.h hdf5_hl.h hdf5.mod"
+  Check_Includes "${my_incdir}" "H5public.h" warning
+  retval=$?
+  if [ ${retval} -ne 0 ]; then
+    echo " ### ERROR:: in Get_HDF5Version"
+    echo "     Need to supply a valid path to the HDF5 include files"
+    echo "     via the environment variable HDF5_INCDIR."
+    echo "     Currently HDF5_INCDIR = ${HDF5_INCDIR:-UNDEF}"
+    echo "     Exiting now ..."
+    echo
+    exit 1
+  fi
+
+  [ -d "${HDF5_LIBDIR:-}" ] && my_libdir="${HDF5_LIBDIR:-}"
+  Check_Libraries "${my_libdir}" "libhdf5.settings libhdf5.*" warning
+  retval=$?
+  if [ ${retval} -ne 0 ]; then
+    echo " ### ERROR:: in Get_HDF5Version"
+    echo "     Need to supply a valid path to the HDF5 library files"
+    echo "     via the environment variable HDF5_LIBDIR."
+    echo "     Currently HDF5_LIBDIR = ${HDF5_LIBDIR:-UNDEF}"
+    echo "     Exiting now ..."
+    echo
+    exit 1
+  fi
+
+cat > ${inp_file} << EOF
+#include <stdio.h>
+#include <H5public.h>
+
+main()
+{
+  unsigned int majnum, minnum, relnum;
+  herr_t status;
+
+  status = H5get_libversion(&majnum, &minnum, &relnum);
+
+ if (status >= 0) {
+   printf("%d.%d.%d\n", majnum, minnum, relnum);
+ }
+}
+EOF
+
+  incs="-I${HDF5_INCDIR}"
+  libs="-L${HDF5_LIBDIR} -lhdf5"
+  command="${COMP} ${incs} ${inp_file} ${libs} -o ${out_file}"
+  err_str="`${command} 2>&1`"
+  retval=$?
+
+  if [ ${retval} -ne 0 ]; then
+    echo " ### ERROR:: in Get_HDF5Version"
+    echo "     Could not determine the HDF5 version because of compilation errors:"
+    echo "       ${command}"
+    echo
+    echo "     ${err_str}"
+    echo
+  else
+    if [ -x "${out_file}" ]; then
+      HDF5_VERSION=`${out_file} | sed 's/[-_"]//g' | sed 's/.*ersion.*=\(.*\)/\1/'`
+      HDF5_VERSION="`echo "${HDF5_VERSION}" | awk '{printf $1}'`"
+      HDF5_MAJOR="`echo ${HDF5_VERSION} | /bin/sed 's/\./ /g' | awk '{printf $1}'`"
+      HDF5_MINOR="`echo ${HDF5_VERSION} | /bin/sed 's/\./ /g' | awk '{printf $2}'`"
+      HDF5_BUILD="`echo ${HDF5_VERSION} | /bin/sed 's/\./ /g' | awk '{printf $3}'`"
+      if [ -f "${HDF5_LIBDIR}/libhdf5.settings" ]; then
+        HDF5_PARALLEL="`grep -i 'parallel.*HDF5.*:' libhdf5.settings 2>&1`"
+        HDF5_PARALLEL="`echo ${HDF5_PARALLEL} | sed 's/.*HDF5.*:\(.*\)/\1/'`"
+        HDF5_PARALLEL="`echo ${HDF5_PARALLEL} | awk '{printf $1}'`"
+        HDF5_PARALLEL="`getYesNo "${HDF5_PARALLEL}"`"
+        [ "${HDF5_PARALLEL}" = "no" ] && unset HDF5_PARALLEL
+      fi
+    fi
+  fi
+
+  [ -f "${inp_file}" ] && rm -f "${inp_file}"
+  [ -f "${out_file}" ] && rm -f "${out_file}"
+
+  return ${retval}
+}
+
+Get_PNetCDFVersion()
+{
+  local -i retval=0
+  local inp_file="/tmp/pncdf_cfile.c" out_file="/tmp/pncdf_ver"
+  local COMP= SAV_COMP=mpicc
+  local incs= libs= command= err_str=
+  local my_incdir= my_libdir=
+
+  PNETCDF_VERSION=
+  PNETCDF_MAJOR=
+  PNETCDF_MINOR=
+  PNETCDF_BUILD=
+
+  [ "X${1}" != "X" ] && SAV_COMP="${1}"
+  case "`basename "${SAV_COMP}" | tr [A-Z] [a-z]`" in
+    intel|icc|ifc|ifort)
+      COMP="icc"
+      ;;
+    gnu|gcc|g++|g77|gfortran)
+      COMP="gcc"
+      ;;
+    pgi|pgcc|pgCC|pgf90)
+      COMP="pgcc"
+      ;;
+    mpi|mpicc|mpiCC|mpif77|mpif90)
+      COMP="mpicc"
+      ;;
+    *)
+      COMP=
+      ;;
+  esac
+
+  COMP=`which "${COMP}" 2>&1 | grep -v "no ${COMP}"`
+  checkPROG -r "${COMP:-}"
+  retval=$?
+  COMP=`basename "${COMP}"`
+  if [ ${retval} -ne 0 ]; then
+    echo " ### ERROR:: in Get_PNetCDFVersion"
+    echo "     Need to supply a valid path to a C/C++/Fortran compiler."
+    echo "     User requested : COMP = ${SAV_COMP:-UNDEF}"
+    echo "     Currently using: COMP = ${COMP:-UNDEF}"
+    echo "     Exiting now ..."
+    echo
+    exit 1
+  fi
+
+  [ -d "${PNETCDF_INCDIR:-}" ] && my_incdir="${PNETCDF_INCDIR:-}"
+  Check_Includes "${my_incdir}" "pnetcdf.h" warning
+  retval=$?
+  if [ ${retval} -ne 0 ]; then
+    echo " ### ERROR:: in Get_PNetCDFVersion"
+    echo "     Need to supply a valid path to the PNetCDF include files"
+    echo "     via the environment variable PNETCDF_INCDIR."
+    echo "     Currently PNETCDF_INCDIR = ${PNETCDF_INCDIR:-UNDEF}"
+    echo "     Exiting now ..."
+    echo
+    exit 1
+  fi
+
+  [ -d "${PNETCDF_LIBDIR:-}" ] && my_libdir="${PNETCDF_LIBDIR:-}"
+  Check_Libraries "${my_libdir}" "libpnetcdf.*" warning
+  retval=$?
+  if [ ${retval} -ne 0 ]; then
+    echo " ### ERROR:: in Get_PNetCDFVersion"
+    echo "     Need to supply a valid path to the PNetCDF library files"
+    echo "     via the environment variable PNETCDF_LIBDIR."
+    echo "     Currently PNETCDF_LIBDIR = ${PNETCDF_LIBDIR:-UNDEF}"
+    echo "     Exiting now ..."
+    echo
+    exit 1
+  fi
+
+cat > ${inp_file} << EOF
+#include <stdio.h>
+#include <pnetcdf.h>
+
+main()
+{
+  printf("%s\n", ncmpi_inq_libvers());
+}
+EOF
+
+  incs="-I${PNETCDF_INCDIR}"
+  libs="-L${PNETCDF_LIBDIR} -lpnetcdf"
+  command="${COMP} ${incs} ${inp_file} ${libs} -o ${out_file}"
+  err_str="`${command} 2>&1`"
+  retval=$?
+
+  if [ ${retval} -ne 0 ]; then
+    echo " ### ERROR:: in Get_PNetCDFVersion"
+    echo "     Could not determine the PNetCDF version because of compilation errors:"
+    echo "       ${command}"
+    echo
+    echo "     ${err_str}"
+    echo
+  else
+    if [ -x "${out_file}" ]; then
+      PNETCDF_VERSION=`${out_file} | sed 's/[-_"]//g' | sed 's/.*ersion.*=\(.*\)/\1/'`
+      PNETCDF_VERSION="`echo "${PNETCDF_VERSION}" | awk '{printf $1}'`"
+      PNETCDF_MAJOR="`echo ${PNETCDF_VERSION} | /bin/sed 's/\./ /g' | awk '{printf $1}'`"
+      PNETCDF_MINOR="`echo ${PNETCDF_VERSION} | /bin/sed 's/\./ /g' | awk '{printf $2}'`"
+      PNETCDF_BUILD="`echo ${PNETCDF_VERSION} | /bin/sed 's/\./ /g' | awk '{printf $3}'`"
+    fi
+  fi
+
+  [ -f "${inp_file}" ] && rm -f "${inp_file}"
+  [ -f "${out_file}" ] && rm -f "${out_file}"
+
+  return ${retval}
+}
+
+Get_NetCDFPath()
+{
+  local -i retval=0
+  local my_root= my_incdir= my_libdir= my_ncconf=
+  local my_netcdf3= my_netcdf4= my_files=
+
+  Get_LibName
+
+  # NetCDF-4 has priority over NetCDF-3
+  my_netcdf3="`getYesNo "${USE_NETCDF3:-}"`"
+    [ "${my_netcdf3:-no}" = "no" ] && unset my_netcdf3
+  my_netcdf4="`getYesNo "${USE_NETCDF4:-}"`"
+    [ "${my_netcdf4:-no}" = "no" ] && unset my_netcdf4
+  [ -n "${my_netcdf3:-}" -a -n "${my_netcdf4:-}" ] && unset my_netcdf3
+
+  # ----------------------------------------------------------------------
+  # The values of the variables NETCDF_INCDIR/NETCDF_LIBDIR have
+  # priority (if they are set). If they are not set, we consider the
+  # variable NETCDF_ROOT.
+  my_incdir="${NETCDF_INCDIR:-${NETCDF_ROOT:+${NETCDF_ROOT}/include}}"
+  my_libdir="${NETCDF_LIBDIR:-${NETCDF_ROOT:+${NETCDF_ROOT}/${libname}}}"
+
+  if [ -n "${my_netcdf4:+1}" -o -n "${NC_CONFIG:-}" ]; then
+    if [ -x "${NC_CONFIG:-}" ]; then
+      my_ncconf="${NC_CONFIG:-}"
+    else
+      my_ncconf="`which nc-config  2>&1 | grep -v "no nc-config"`"
+    fi
+  fi
+
+  my_root="${NETCDF_ROOT:-}"
+  if [ -z "${my_root:-}" ]; then
+    if [ -n "${my_incdir:-}" -o -n "${my_libdir:-}" ]; then
+      [ "${my_incdir/\/include*/}" = "${my_libdir/\/${libname}*/}" ] && \
+        my_root="${my_incdir/\/include*/}"
+    fi
+    [ -z "${my_root:-}" -a -x "${my_ncconf:-}" ] && \
+      my_root="`${my_ncconf} --prefix`"
+  fi
+
+  # Check for NC_CONFIG/USE_NETCDF4 and adjust to use NetCDF-4 instead
+  [ -z "${my_incdir:-}" -a -x "${my_ncconf:-}" ] && \
+    my_incdir="`${my_ncconf} --prefix`/include"
+  [ -z "${my_libdir:-}" -a -x "${my_ncconf:-}" ] && \
+    my_libdir="`${my_ncconf} --prefix`/${libname}"
+
+  # ----------------------------------------------------------------------
+  # Check if my_incdir/my_libdir actually point to the NetCDF libraries
+  if [ -n "${my_incdir:+1}" ]; then
+    my_files="netcdf.h netcdf.inc netcdf.mod typesizes.mod"
+    Check_Includes "${my_incdir}" "${my_files}" warning
+    if [ $? -ne 0 ]; then
+      echo " ### ERROR:: in Get_NetCDFPath"
+      echo "     Need to supply a valid path to the NetCDF include files"
+      echo "     via the environment variable NETCDF_INCDIR."
+      echo "     Currently NETCDF_INCDIR = ${my_incdir}"
+      echo "     Exiting now ..."
+      echo
+      exit 1
+    fi
+  fi
+  if [ -n "${my_libdir:+1}" ]; then
+    my_files="libnetcdf.* libnetcdff.*"
+    Check_Libraries "${my_libdir}" "${my_files}" warning
+    if [ $? -ne 0 ]; then
+      echo " ### ERROR:: in Get_NetCDFPath"
+      echo "     Need to supply a valid path to the NetCDF library files"
+      echo "     via the environment variable NETCDF_LIBDIR."
+      echo "     Currently NETCDF_LIBDIR = ${my_libdir}"
+      echo "     Exiting now ..."
+      echo
+      exit 1
+    fi
+  fi
+
+  # ----------------------------------------------------------------------
+  # Get the NetCDF version installed in the system
+  if [ -n "${my_incdir:+1}" -a -n "${my_libdir:+1}" ]; then
+    NETCDF_INCDIR="${my_incdir}"
+    NETCDF_LIBDIR="${my_libdir}"
+
+    if [ -n "${USE_MPI:+1}" ]          || \
+       [ -n "${USE_MPIF90:+1}" ]       || \
+       [ -n "${USE_PNETCDF:+1}" ]      || \
+       [ -n "${USE_PARALLEL_IO:+1}" ]; then
+      Get_NetCDFVersion
+    else
+      Get_NetCDFVersion "${COMPILER:-}"
+    fi
+
+    unset NETCDF_INCDIR NETCDF_LIBDIR
+  fi
+
+  # ----------------------------------------------------------------------
+  # If USE_NETCDF4 was explicitly set, then check if my_incdir/my_libdir
+  # point to NetCDF-4 libraries
+  if [ -n "${my_netcdf4:+1}" ]; then
+    if [ "${NETCDF_MAJOR:-0}" -ne 4 ]; then
+      echo
+      echo " ### WARNING: in ${scrNAME} (USE_NETCDF4:Get_NetCDFPath)"
+      echo "       User requested: USE_NETCDF4 = ${my_netcdf4}"
+      echo "      Script responds: NETCDF_VERSION = ${NETCDF_VERSION}"
+      echo "      Need NetCDF: Version >= 4"
+      echo
+      retval=1
+    fi
+  fi
+
+  # ----------------------------------------------------------------------
+  # If USE_NETCDF3 was explicitly set, then check if my_incdir/my_libdir
+  # point to NetCDF-3 libraries
+  if [ -n "${my_netcdf3:+1}" ]; then
+    if [ "${NETCDF_MAJOR:-0}" -ne 3 ]; then
+      echo
+      echo " ### WARNING: in ${scrNAME} (USE_NETCDF3:Get_NetCDFPath)"
+      echo "       User requested: USE_NETCDF3 = ${my_netcdf3}"
+      echo "      Script responds: NETCDF_VERSION = ${NETCDF_VERSION}"
+      echo "      Need NetCDF: 3 <= Version < 4"
+      echo
+      retval=1
+    fi
+  fi
+
+  if [ "${NETCDF_MAJOR:-0}" -ge 4 ]; then
+    [ -z "${my_ncconf:-}" -a -x "${my_root:-}/bin/nc-config" ] && \
+      my_ncconf="${my_root:-}/bin/nc-config"
+
+    unset my_netcdf3
+    my_netcdf4="yes"
+  else
+    my_netcdf3="yes"
+    unset my_netcdf4
+    unset my_ncconf
+  fi
+
+  USE_NETCDF3="${my_netcdf3:-no}"
+  USE_NETCDF4="${my_netcdf4:-no}"
+  NETCDF_ROOT="${my_root:-}"
+  NETCDF_INCDIR="${my_incdir:-}"
+  NETCDF_LIBDIR="${my_libdir:-}"
+  NC_CONFIG="${my_ncconf:-}"
+
+  [ -z "${NETCDF_INCDIR:-}" -o -z "${NETCDF_LIBDIR:-}" ] && retval=1
+
+  return ${retval}
+}
+
+Get_HDF5Path()
+{
+  local -i retval=0
+  local my_root= my_incdir= my_libdir= my_ncconf=
+  local my_hdf5= my_pnetcdf= my_para_io=
+  local my_files=
+
+
+  # USE_HDF5/USE_PNETCDF/USE_PARALLEL_IO
+  my_hdf5="`getYesNo "${USE_HDF5:-}"`"
+    [ "${my_hdf5}" = "no" ] && unset my_hdf5
+  my_pnetcdf="`getYesNo "${USE_PNETCDF:-}"`"
+    [ "${my_pnetcdf}" = "no" ] && unset my_pnetcdf
+  my_para_io="`getYesNo "${USE_PARALLEL_IO:-}"`"
+    [ "${my_para_io}" = "no" ] && unset my_para_io
+
+  # Unset all relevant HDF5 variables if the conditions below are true
+  if [ -z "${my_hdf5:-}" -a -z "${my_pnetcdf:-}" -a -z "${my_para_io:-}" ]; then
+    USE_HDF5="no"
+    unset HDF5_ROOT HDF5_INCDIR HDF5_LIBDIR
+    unset HDF5_VERSION HDF5_MAJOR HDF5_MINOR HDF5_BUILD
+    unset HDF5_PARALLEL
+    retval=0
+    return ${retval}
+  fi
+
+
+  Get_LibName
+
+
+  # ----------------------------------------------------------------------
+  # The values of the variables HDF5_INCDIR/HDF5_LIBDIR have
+  # priority (if they are set). If they are not set, we consider the
+  # variable HDF5_ROOT.
+  my_incdir="${HDF5_INCDIR:-${HDF5_ROOT:+${HDF5_ROOT}/include}}"
+  my_libdir="${HDF5_LIBDIR:-${HDF5_ROOT:+${HDF5_ROOT}/${libname}}}"
+
+  my_root="${HDF5_ROOT:-}"
+  if [ -z "${my_root:-}" ]; then
+    if [ -n "${my_incdir:-}" -o -n "${my_libdir:-}" ]; then
+      [ "${my_incdir/\/include*/}" = "${my_libdir/\/${libname}*/}" ] && \
+        my_root="${my_incdir/\/include*/}"
+    fi
+  fi
+
+  # ----------------------------------------------------------------------
+  # Search for the HDF5 libraries in the NetCDF location
+  # (if my_incdir/my_libdir are not set)
+  my_incdir="${my_incdir:-${NETCDF_INCDIR:+${NETCDF_INCDIR}}}"
+  my_incdir="${my_incdir:-${NETCDF_ROOT:+${NETCDF_ROOT}/include}}"
+
+  my_libdir="${my_libdir:-${NETCDF_LIBDIR:+${NETCDF_LIBDIR}}}"
+  my_libdir="${my_libdir:-${NETCDF_ROOT:+${NETCDF_ROOT}/${libname}}}"
+
+  my_root="${my_root:-${NETCDF_ROOT:+${NETCDF_ROOT}}}"
+
+  # ----------------------------------------------------------------------
+  # Check if my_incdir/my_libdir actually point to the HDF5 libraries
+  if [ -n "${my_incdir:+1}" ]; then
+    my_files="hdf5.h hdf5_hl.h hdf5.mod"
+    Check_Includes "${my_incdir}" "${my_files}" warning
+    if [ $? -ne 0 ]; then
+      echo " ### ERROR:: in Get_HDF5Path"
+      echo "     Need to supply a valid path to the HDF5 include files"
+      echo "     via the environment variable HDF5_INCDIR."
+      echo "     Currently HDF5_INCDIR = ${my_incdir}"
+      echo "     Exiting now ..."
+      echo
+      exit 1
+    fi
+  fi
+  if [ -n "${my_libdir:+1}" ]; then
+    my_files="libhdf5.*"
+    Check_Libraries "${my_libdir}" "${my_files}" warning
+    if [ $? -ne 0 ]; then
+      echo " ### ERROR:: in Get_HDF5Path"
+      echo "     Need to supply a valid path to the HDF5 library files"
+      echo "     via the environment variable HDF5_LIBDIR."
+      echo "     Currently HDF5_LIBDIR = ${my_libdir}"
+      echo "     Exiting now ..."
+      echo
+      exit 1
+    fi
+  fi
+
+  # ----------------------------------------------------------------------
+  # Get the HDF5 version installed in the system
+  if [ -n "${my_incdir:+1}" -a -n "${my_libdir:+1}" ]; then
+    HDF5_INCDIR="${my_incdir}"
+    HDF5_LIBDIR="${my_libdir}"
+
+    Get_HDF5Version
+
+    unset HDF5_INCDIR HDF5_LIBDIR
+  fi
+
+  USE_HDF5="${my_hdf5:-no}"
+  HDF5_ROOT="${my_root:-}"
+  HDF5_INCDIR="${my_incdir:-}"
+  HDF5_LIBDIR="${my_libdir:-}"
+
+  [ -z "${HDF5_INCDIR:-}" -o -z "${HDF5_LIBDIR:-}" ] && retval=1
+
+  return ${retval}
+}
+
+Get_PNetCDFPath()
+{
+  local -i retval=0
+  local my_root= my_incdir= my_libdir= my_ncconf=
+  local my_pnetcdf= my_para_io= my_files=
+
+
+  # USE_PNETCDF/USE_PARALLEL_IO
+  my_pnetcdf="`getYesNo "${USE_PNETCDF:-}"`"
+    [ "${my_pnetcdf}" = "no" ] && unset my_pnetcdf
+  my_para_io="`getYesNo "${USE_PARALLEL_IO:-}"`"
+    [ "${my_para_io}" = "no" ] && unset my_para_io
+
+  # Unset all relevant PNETCDF variables if the conditions below are true
+  if [ -z "${my_pnetcdf:-}" -a -z "${my_para_io:-}" ]; then
+    USE_PARALLEL_IO="no"
+    USE_PNETCDF="no"
+    unset PNETCDF_ROOT PNETCDF_INCDIR PNETCDF_LIBDIR
+    unset PNETCDF_VERSION PNETCDF_MAJOR PNETCDF_MINOR PNETCDF_BUILD
+    retval=0
+    return ${retval}
+  fi
+
+
+  Get_LibName
+
+
+  # ----------------------------------------------------------------------
+  # The values of the variables PNETCDF_INCDIR/PNETCDF_LIBDIR have
+  # priority (if they are set). If they are not set, we consider the
+  # variable PNETCDF_ROOT.
+  my_incdir="${PNETCDF_INCDIR:-${PNETCDF_ROOT:+${PNETCDF_ROOT}/include}}"
+  my_libdir="${PNETCDF_LIBDIR:-${PNETCDF_ROOT:+${PNETCDF_ROOT}/${libname}}}"
+
+  my_root="${PNETCDF_ROOT:-}"
+  if [ -z "${my_root:-}" ]; then
+    if [ -n "${my_incdir:-}" -o -n "${my_libdir:-}" ]; then
+      [ "${my_incdir/\/include*/}" = "${my_libdir/\/${libname}*/}" ] && \
+        my_root="${my_incdir/\/include*/}"
+    fi
+  fi
+
+  # ----------------------------------------------------------------------
+  # Search for the PNetCDF libraries in the NetCDF location
+  # (if my_incdir/my_libdir are not set)
+  my_incdir="${my_incdir:-${NETCDF_INCDIR:+${NETCDF_INCDIR}}}"
+  my_incdir="${my_incdir:-${NETCDF_ROOT:+${NETCDF_ROOT}/include}}"
+
+  my_libdir="${my_libdir:-${NETCDF_LIBDIR:+${NETCDF_LIBDIR}}}"
+  my_libdir="${my_libdir:-${NETCDF_ROOT:+${NETCDF_ROOT}/${libname}}}"
+
+  my_root="${my_root:-${NETCDF_ROOT:+${NETCDF_ROOT}}}"
+
+  # ----------------------------------------------------------------------
+  # Check if my_incdir/my_libdir actually point to the PNetCDF libraries
+  if [ -n "${my_incdir:+1}" ]; then
+    my_files="pnetcdf.h pnetcdf.inc pnetcdf.mod"
+    Check_Includes "${my_incdir}" "${my_files}" warning
+    if [ $? -ne 0 ]; then
+      echo " ### ERROR:: in Get_PNetCDFPath"
+      echo "     Need to supply a valid path to the PNetCDF include files"
+      echo "     via the environment variable PNETCDF_INCDIR."
+      echo "     Currently PNETCDF_INCDIR = ${my_incdir}"
+      echo "     Exiting now ..."
+      echo
+      exit 1
+    fi
+  fi
+  if [ -n "${my_libdir:+1}" ]; then
+    my_files="libpnetcdf.*"
+    Check_Libraries "${my_libdir}" "${my_files}" warning
+    if [ $? -ne 0 ]; then
+      echo " ### ERROR:: in Get_PNetCDFPath"
+      echo "     Need to supply a valid path to the PNetCDF library files"
+      echo "     via the environment variable PNETCDF_LIBDIR."
+      echo "     Currently PNETCDF_LIBDIR = ${my_libdir}"
+      echo "     Exiting now ..."
+      echo
+      exit 1
+    fi
+  fi
+
+  # ----------------------------------------------------------------------
+  # Get the PNetCDF version installed in the system
+  if [ -n "${my_incdir:+1}" -a -n "${my_libdir:+1}" ]; then
+    PNETCDF_INCDIR="${my_incdir}"
+    PNETCDF_LIBDIR="${my_libdir}"
+
+    Get_PNetCDFVersion
+
+    unset PNETCDF_INCDIR PNETCDF_LIBDIR
+  fi
+
+  USE_PNETCDF="${my_pnetcdf:-no}"
+  PNETCDF_ROOT="${my_root:-}"
+  PNETCDF_INCDIR="${my_incdir:-}"
+  PNETCDF_LIBDIR="${my_libdir:-}"
+
+  [ -z "${PNETCDF_INCDIR:-}" -o -z "${PNETCDF_LIBDIR:-}" ] && retval=1
+
+  return ${retval}
+}
+
+Get_MCTPath()
+{
+  local -i retval=0
+  local my_root= my_incdir= my_libdir=
+  local my_mct=
+  local my_files=
+
+  # USE_MCT
+  my_mct="`getYesNo "${COUPLED_SYSTEM:-no}"`"
+  [ "${my_mct}" = "no" ] && \
+    my_mct="`getYesNo "${USE_MCT:-no}"`"
+  [ "${my_mct}" = "no" ] && unset my_mct
+
+  # Unset all relevant MCT variables if the conditions below are true
+  if [ -z "${my_mct:-}" ]; then
+    USE_MCT="no"
+    unset MCT_ROOT MCT_INCDIR MCT_LIBDIR
+    unset MCT_VERSION
+    retval=0
+    return ${retval}
+  fi
+
+
+  Get_LibName
+
+
+  # ----------------------------------------------------------------------
+  # The values of the variables MCT_INCDIR/MCT_LIBDIR have
+  # priority (if they are set). If they are not set, we consider the
+  # variable MCT_ROOT.
+  my_root="${MCT_ROOT:-${MPI_HOME:+${MPI_HOME}}}"
+  my_incdir="${MCT_INCDIR:-${my_root:+${my_root}/include}}"
+  my_libdir="${MCT_LIBDIR:-${my_root:+${my_root}/${libname}}}"
+
+  if [ -z "${my_root:-}" ]; then
+    if [ -n "${my_incdir:-}" -o -n "${my_libdir:-}" ]; then
+      [ "${my_incdir/\/include*/}" = "${my_libdir/\/${libname}*/}" ] && \
+        my_root="${my_incdir/\/include*/}"
+    fi
+  fi
+
+  # ----------------------------------------------------------------------
+  # Search for the MCT libraries in the NetCDF location
+  # (if my_incdir/my_libdir are not set)
+  my_incdir="${my_incdir:-${NETCDF_INCDIR:+${NETCDF_INCDIR}}}"
+  my_incdir="${my_incdir:-${NETCDF_ROOT:+${NETCDF_ROOT}/include}}"
+
+  my_libdir="${my_libdir:-${NETCDF_LIBDIR:+${NETCDF_LIBDIR}}}"
+  my_libdir="${my_libdir:-${NETCDF_ROOT:+${NETCDF_ROOT}/${libname}}}"
+
+  my_root="${my_root:-${NETCDF_ROOT:+${NETCDF_ROOT}}}"
+
+  # ----------------------------------------------------------------------
+  # Check if my_incdir/my_libdir actually point to the MCT libraries
+  if [ -n "${my_incdir:+1}" ]; then
+    my_files="m_die.mod m_mpif.mod m_mpif90.mod m_stdio.mod"
+    Check_Includes "${my_incdir}" "${my_files}" warning
+    if [ $? -ne 0 ]; then
+      echo " ### ERROR:: in Get_MCTPath"
+      echo "     Need to supply a valid path to the MCT include files"
+      echo "     via the environment variable MCT_INCDIR."
+      echo "     Currently MCT_INCDIR = ${my_incdir}"
+      echo "     Exiting now ..."
+      echo
+      exit 1
+    fi
+  fi
+  if [ -n "${my_libdir:+1}" ]; then
+    my_files="libmct.* libmpeu.*"
+    Check_Libraries "${my_libdir}" "${my_files}" warning
+    if [ $? -ne 0 ]; then
+      echo " ### ERROR:: in Get_MCTPath"
+      echo "     Need to supply a valid path to the MCT library files"
+      echo "     via the environment variable MCT_LIBDIR."
+      echo "     Currently MCT_LIBDIR = ${my_libdir}"
+      echo "     Exiting now ..."
+      echo
+      exit 1
+    fi
+  fi
+
+  # ----------------------------------------------------------------------
+  # Get the MCT version installed in the system
+  if [ -n "${my_incdir:+1}" -a -n "${my_libdir:+1}" ]; then
+    MCT_PARALLEL=yes
+    [ -f ${my_libdir}/libmpi-serial.a ] && MCT_PARALLEL=no
+    my_mct=yes
+  else
+    my_mct=no
+  fi
+
+  USE_MCT="${my_mct:-no}"
+  MCT_ROOT="${my_root:-}"
+  MCT_INCDIR="${my_incdir:-}"
+  MCT_LIBDIR="${my_libdir:-}"
+
+  [ -z "${MCT_INCDIR:-}" -o -z "${MCT_LIBDIR:-}" ] && retval=1
+
+  return ${retval}
+}
+
+Check_CoawstDirs()
+{
+  # ------------------------------------------------------------
+  # Set a local environmental variable to define the path to the directories
+  # where all this project's files are kept.
+  if ! `checkDIR -rxw ${MY_ROOT_DIR}`; then
+    echo " ### ERROR:: in Check_CoawstDirs"
+    echo "       The supplied value for:"
+    echo "       MY_ROOT_DIR = ${MY_ROOT_DIR}"
+    echo "       is not a valid directory. This variable is essential"
+    echo "       for this script to be executed properly."
+    echo "     Exiting now ..."
+    echo
+    exit 1
+  else
+    pushd ${MY_ROOT_DIR} > /dev/null 2>&1
+      MY_ROOT_DIR="`pwd`"
+    popd > /dev/null 2>&1
+  fi
+
+  # ------------------------------------------------------------
+  # Set a local environmental variable to define the path to the directories
+  # where all this project's files are kept.
+  if ! `checkDIR -rxw ${MY_PROJECT_DIR}`; then
+    echo " ### ERROR:: in Check_CoawstDirs"
+    echo "       The supplied value for:"
+    echo "       MY_PROJECT_DIR = ${MY_PROJECT_DIR}"
+    echo "       is not a valid directory. This variable is essential"
+    echo "       for this script to be executed properly."
+    echo "     Exiting now ..."
+    echo
+    exit 1
+  else
+    pushd ${MY_PROJECT_DIR} > /dev/null 2>&1
+      MY_PROJECT_DIR="`pwd`"
+    popd > /dev/null 2>&1
+  fi
+
+  # ------------------------------------------------------------
+  # The path to the user's local current ROMS source code.
+  if ! `checkDIR -rxw ${MY_ROMS_SRC}`; then
+    echo " ### ERROR:: in Check_CoawstDirs"
+    echo "       The supplied value for:"
+    echo "       MY_ROMS_SRC = ${MY_ROMS_SRC}"
+    echo "       is not a valid directory. This variable is essential"
+    echo "       for this script to be executed properly."
+    echo "     Exiting now ..."
+    echo
+    exit 1
+  else
+    pushd ${MY_ROMS_SRC} > /dev/null 2>&1
+      MY_ROMS_SRC="`pwd`"
+    popd > /dev/null 2>&1
+  fi
+
+  # ------------------------------------------------------------
+  # The path to the user's local current ROMS source code.
+  if ! `checkDIR -rxw ${ROMS_DIR}`; then
+    echo " ### ERROR:: in Check_CoawstDirs"
+    echo "       The supplied value for:"
+    echo "       ROMS_DIR = ${ROMS_DIR}"
+    echo "       is not a valid directory. This variable is essential"
+    echo "       for this script to be executed properly."
+    echo "     Exiting now ..."
+    echo
+    exit 1
+  else
+    pushd ${ROMS_DIR} > /dev/null 2>&1
+      ROMS_DIR="`pwd`"
+    popd > /dev/null 2>&1
+  fi
+
+  # ------------------------------------------------------------
+  # The path to the user's local current WRF source code.
+  if ! `checkDIR -rxw ${WRF_DIR}`; then
+    echo " ### ERROR:: in Check_CoawstDirs"
+    echo "       The supplied value for:"
+    echo "       WRF_DIR = ${WRF_DIR}"
+    echo "       is not a valid directory. This variable is essential"
+    echo "       for this script to be executed properly."
+    echo "     Exiting now ..."
+    echo
+    exit 1
+  else
+    pushd ${WRF_DIR} > /dev/null 2>&1
+      WRF_DIR="`pwd`"
+    popd > /dev/null 2>&1
+  fi
+
+  # ------------------------------------------------------------
+  # The path to the user's local current WPS source code.
+  if [ -n "${BUILD_WPS:+1}" ]; then
+    if ! `checkDIR -rxw ${WPS_DIR}`; then
+      echo " ### ERROR:: in Check_CoawstDirs"
+      echo "       The supplied value for:"
+      echo "       WPS_DIR = ${WPS_DIR}"
+      echo "       is not a valid directory. This variable is essential"
+      echo "       for this script to be executed properly."
+      echo "     Exiting now ..."
+      echo
+      exit 1
+    else
+      pushd ${WPS_DIR} > /dev/null 2>&1
+        WPS_DIR="`pwd`"
+      popd > /dev/null 2>&1
+    fi
+  fi
+  
+  # ------------------------------------------------------------
+  # The path to the user's local current SWAN source code.
+  if ! `checkDIR -rxw ${SWAN_DIR}`; then
+    echo " ### ERROR:: in Check_CoawstDirs"
+    echo "       The supplied value for:"
+    echo "       SWAN_DIR = ${SWAN_DIR}"
+    echo "       is not a valid directory. This variable is essential"
+    echo "       for this script to be executed properly."
+    echo "     Exiting now ..."
+    echo
+    exit 1
+  else
+    pushd ${SWAN_DIR} > /dev/null 2>&1
+      SWAN_DIR="`pwd`"
+    popd > /dev/null 2>&1
+  fi
+}
+
+Adjust_YESNOVars()
+{
+  USE_DEBUG=`getYesNo "${USE_DEBUG:-no}"`
+  [ "${USE_DEBUG:-no}" = "no" ] && unset USE_DEBUG
+  
+  USE_MPI=`getYesNo "${USE_MPI:-no}"`
+  [ "${USE_MPI:-no}" = "no" ] && unset USE_MPI
+
+  USE_MPIF90=`getYesNo "${USE_MPIF90:-no}"`
+  [ "${USE_MPIF90:-no}" = "no" ] && unset USE_MPIF90
+
+  USE_OPENMP=`getYesNo "${USE_OPENMP:-no}"`
+  [ "${USE_OPENMP:-no}" = "no" ] && unset USE_OPENMP
+
+  USE_NETCDF3=`getYesNo "${USE_NETCDF3:-no}"`
+  [ "${USE_NETCDF3:-no}" = "no" ] && unset USE_NETCDF3
+
+  USE_NETCDF4=`getYesNo "${USE_NETCDF4:-no}"`
+  [ "${USE_NETCDF4:-no}" = "no" ] && unset USE_NETCDF4
+
+  USE_LARGE=`getYesNo "${USE_LARGE:-no}"`
+  [ "${USE_LARGE:-no}" = "no" ] && unset USE_LARGE
+
+  USE_HDF5=`getYesNo "${USE_HDF5:-no}"`
+  [ "${USE_HDF5:-no}" = "no" ] && unset USE_HDF5
+  
+  USE_PARALLEL_IO=`getYesNo "${USE_PARALLEL_IO:-no}"`
+  [ "${USE_PARALLEL_IO:-no}" = "no" ] && unset USE_PARALLEL_IO
+
+  USE_PNETCDF=`getYesNo "${USE_PNETCDF:-no}"`
+  [ "${USE_PNETCDF:-no}" = "no" ] && unset USE_PNETCDF
+
+  USE_MCT=`getYesNo "${USE_MCT:-no}"`
+  [ "${USE_MCT:-no}" = "no" ] && unset USE_MCT
+
+  USE_ARPACK=`getYesNo "${USE_ARPACK:-no}"`
+  [ "${USE_ARPACK:-no}" = "no" ] && unset USE_ARPACK
+
+  USE_PARPACK=`getYesNo "${USE_PARPACK:-no}"`
+  [ "${USE_PARPACK:-no}" = "no" ] && unset USE_PARPACK
+
+  USE_ESMF=`getYesNo "${USE_ESMF:-no}"`
+  [ "${USE_ESMF:-no}" = "no" ] && unset USE_ESMF
+
+  USE_JASPER="${my_USE_JASPER:-${USE_JASPER}}"
+  [ "${USE_JASPER:-no}" = "no" ] && unset USE_JASPER
+
+  USE_NCL="${my_USE_NCL:-${USE_NCL}}"
+  [ "${USE_NCL:-no}" = "no" ] && unset USE_NCL
+
+  USE_ADJOINT=`getYesNo "${USE_ADJOINT:-no}"`
+  [ "${USE_ADJOINT:-no}" = "no" ] && unset USE_ADJOINT
+
+  USE_TANGENT=`getYesNo "${USE_TANGENT:-no}"`
+  [ "${USE_TANGENT:-no}" = "no" ] && unset USE_TANGENT
+
+  USE_REPRESENTER=`getYesNo "${USE_REPRESENTER:-no}"`
+  [ "${USE_REPRESENTER:-no}" = "no" ] && unset USE_REPRESENTER
+
+  USE_ICE=`getYesNo "${USE_ICE:-no}"`
+  [ "${USE_ICE:-no}" = "no" ] && unset USE_ICE
+
+  USE_ROMS=`getYesNo "${USE_ROMS:-no}"`
+  [ "${USE_ROMS:-no}" = "no" ] && unset USE_ROMS
+
+  USE_WRF=`getYesNo "${USE_WRF:-no}"`
+  [ "${USE_WRF:-no}" = "no" ] && unset USE_WRF
+
+  USE_SWAN=`getYesNo "${USE_SWAN:-no}"`
+  [ "${USE_SWAN:-no}" = "no" ] && unset USE_SWAN
+
+  USE_INWAVE=`getYesNo "${USE_INWAVE:-no}"`
+  [ "${USE_INWAVE:-no}" = "no" ] && unset USE_INWAVE
+
+  USE_REFDIF=`getYesNo "${USE_REFDIF:-no}"`
+  [ "${USE_REFDIF:-no}" = "no" ] && unset USE_REFDIF
+
+  USE_SED=`getYesNo "${USE_SED:-no}"`
+  [ "${USE_SED:-no}" = "no" ] && unset USE_SED
+
+  COUPLED_SYSTEM=`getYesNo "${COUPLED_SYSTEM:-no}"`
+  [ "${COUPLED_SYSTEM:-no}" = "no" ] && unset COUPLED_SYSTEM
+
+  BUILD_WPS=`getYesNo "${BUILD_WPS:-no}"`
+  [ "${BUILD_WPS:-no}" = "no" ] && unset BUILD_WPS
+
+  export WRF_OS="${WRF_OS:-}"
+  export WRF_MACH="${WRF_MACH:-}"
+
+  WRF_EM_CORE=$(String_getInteger "${WRF_EM_CORE}" 0)
+    [ ${WRF_EM_CORE} -le 0 ] && WRF_EM_CORE=0
+    [ ${WRF_EM_CORE} -gt 0 ] && WRF_EM_CORE=1
+  export WRF_EM_CORE
+
+  WRF_NMM_CORE=$(String_getInteger "${WRF_NMM_CORE}" 0)
+    [ ${WRF_NMM_CORE} -le 0 ] && WRF_NMM_CORE=0
+    [ ${WRF_NMM_CORE} -gt 0 ] && WRF_NMM_CORE=1
+  export WRF_NMM_CORE
+
+  if [ -n "${USE_WRF:+1}" ]; then
+    if [ ${WRF_EM_CORE} -gt 0 -a ${WRF_NMM_CORE} -gt 0 ]; then
+      echo "ERROR:: Adjust_YESNOVars: Only one of WRF_EM_CORE and WRF_NMM_CORE"
+      echo "                       can be specified. Valid values =0/1."
+      echo "        WRF_EM_CORE  = ${WRF_EM_CORE:-UNDEF}"
+      echo "        WRF_NMM_CORE = ${WRF_NMM_CORE:-UNDEF}"
+      echo "        Exiting now ..."
+      echo -n
+      exit 1
+    fi
+  fi
+
+  unset WRFIO_NCD_LARGE_FILE_SUPPORT
+  if [ "$(getYesNo "${USE_LARGE:-no}")" = "yes" ]; then
+    WRFIO_NCD_LARGE_FILE_SUPPORT=1
+  fi
+  export WRFIO_NCD_LARGE_FILE_SUPPORT
+}
+
+Print_CoawstVars()
+{
+  echo; titxt "CONFIGURED PARAMETER VALUES OF THE COAWST SYSTEM"
+  sctxt "General parameters"
+  echo "             CLEAN = ${CLEAN:-UNDEF}"
+  echo "          CLEANWRF = ${CLEANWRF:-UNDEF}"
+  echo "          CLEANWPS = ${CLEANWPS:-UNDEF}"
+  echo "     PARMAKE_NCPUS = ${PARMAKE_NCPUS:-UNDEF}"
+  echo "          MODFILES = ${MODFILES:-UNDEF}"
+  echo "         USE_DEBUG = ${USE_DEBUG:-no}"
+  echo "          COMPILER = ${COMPILER:-UNDEF}"
+  echo "            CASEID = ${CASEID:-UNDEF}"
+  echo "         BUILD_WPS = ${BUILD_WPS:-UNDEF}"
+
+  echo; sctxt "MPI/OPENMP options"
+  echo "           USE_MPI = ${USE_MPI:-no}"
+  echo "        USE_MPIF90 = ${USE_MPIF90:-no}"
+  echo "        USE_OPENMP = ${USE_OPENMP:-no}"
+
+  echo; sctxt "ROMS/WRF/SWAN parameters"
+  echo "  ROMS_APPLICATION = ${ROMS_APPLICATION:-UNDEF}"
+  echo "       MY_ROOT_DIR = ${MY_ROOT_DIR:-UNDEF}"
+  echo "       MY_ROMS_SRC = ${MY_ROMS_SRC:-UNDEF}"
+  echo "    MY_PROJECT_DIR = ${MY_PROJECT_DIR:-UNDEF}"
+  echo "         COMPILERS = ${COMPILERS:-UNDEF}"
+  echo "     MY_HEADER_DIR = ${MY_HEADER_DIR:-UNDEF}"
+  echo " MY_ANALYTICAL_DIR = ${MY_ANALYTICAL_DIR:-UNDEF}"
+  echo "            BINDIR = ${BINDIR:-UNDEF}"
+  echo "       SCRATCH_DIR = ${SCRATCH_DIR:-UNDEF}"
+  echo "      MY_CPP_FLAGS = ${MY_CPP_FLAGS:-UNDEF}"
+  echo
+  echo "       NestedGrids = ${NestedGrids:-UNDEF}"
+  echo "         USE_LARGE = ${USE_LARGE:-no}"
+  echo
+  echo "          ROMS_DIR = ${ROMS_DIR:-UNDEF}"
+  echo "          ROMS_VER = ${ROMS_VER:-UNDEF}"
+  echo "          ROMS_REV = ${ROMS_REV:-UNDEF}"
+  echo "         ROMS_DATE = ${ROMS_DATE:-UNDEF}"
+  echo
+  echo "           WRF_DIR = ${WRF_DIR:-UNDEF}"
+  echo "           WRF_VER = ${WRF_VER:-UNDEF}"
+  echo "           WRF_REV = ${WRF_REV:-UNDEF}"
+  echo "          WRF_DATE = ${WRF_DATE:-UNDEF}"
+  echo "            WRF_OS = ${WRF_OS:-UNDEF}"
+  echo "          WRF_MACH = ${WRF_MACH:-UNDEF}"
+  echo "       WRF_EM_CORE = ${WRF_EM_CORE:-UNDEF}"
+  echo "      WRF_NMM_CORE = ${WRF_NMM_CORE:-UNDEF}"
+  echo "WRFIO_NCD_LARGE_FILE_SUPPORT = ${WRFIO_NCD_LARGE_FILE_SUPPORT:-UNDEF}"
+  echo
+  echo "           WPS_DIR = ${WPS_DIR:-UNDEF}"
+  echo "           WPS_VER = ${WPS_VER:-UNDEF}"
+  echo "           WPS_REV = ${WPS_REV:-UNDEF}"
+  echo "          WPS_DATE = ${WPS_DATE:-UNDEF}"
+  echo
+  echo "          SWAN_DIR = ${SWAN_DIR:-UNDEF}"
+  echo "          SWAN_VER = ${SWAN_VER:-UNDEF}"
+  echo "          SWAN_REV = ${SWAN_REV:-UNDEF}"
+  echo "         SWAN_DATE = ${SWAN_DATE:-UNDEF}"
+
+  echo; sctxt "NetCDF-3/NetCDF-4 environment parameters"
+  echo "       USE_NETCDF3 = ${USE_NETCDF3:-no}"
+  echo "       USE_NETCDF4 = ${USE_NETCDF4:-no}"
+  echo "       NETCDF_ROOT = ${NETCDF_ROOT:-UNDEF}"
+  echo "         NC_CONFIG = ${NC_CONFIG:-UNDEF}"
+  echo "     NETCDF_INCDIR = ${NETCDF_INCDIR:-UNDEF}"
+  echo "     NETCDF_LIBDIR = ${NETCDF_LIBDIR:-UNDEF}"
+  echo "    NETCDF_VERSION = ${NETCDF_VERSION:-UNDEF}"
+  echo "      NETCDF_MAJOR = ${NETCDF_MAJOR:-UNDEF}"
+  echo "      NETCDF_MINOR = ${NETCDF_MINOR:-UNDEF}"
+  echo "      NETCDF_BUILD = ${NETCDF_BUILD:-UNDEF}"
+  echo "   NETCDF_PARALLEL = ${NETCDF_PARALLEL:-no}"
+
+  echo; sctxt "HDF5 environment parameters"
+  echo "          USE_HDF5 = ${USE_HDF5:-no}"
+  echo "         HDF5_ROOT = ${HDF5_ROOT:-UNDEF}"
+  echo "       HDF5_INCDIR = ${HDF5_INCDIR:-UNDEF}"
+  echo "       HDF5_LIBDIR = ${HDF5_LIBDIR:-UNDEF}"
+  echo "      HDF5_VERSION = ${HDF5_VERSION:-UNDEF}"
+  echo "        HDF5_MAJOR = ${HDF5_MAJOR:-UNDEF}"
+  echo "        HDF5_MINOR = ${HDF5_MINOR:-UNDEF}"
+  echo "        HDF5_BUILD = ${HDF5_BUILD:-UNDEF}"
+  echo "     HDF5_PARALLEL = ${HDF5_PARALLEL:-UNDEF}"
+
+  echo; sctxt "Parallel I/O and PNetCDF/Parallel NetCDF-4 parameters"
+  echo "   USE_PARALLEL_IO = ${USE_PARALLEL_IO:-no}"
+  echo "       USE_PNETCDF = ${USE_PNETCDF:-no}"
+  echo "      PNETCDF_ROOT = ${PNETCDF_ROOT:-UNDEF}"
+  echo "    PNETCDF_INCDIR = ${PNETCDF_INCDIR:-UNDEF}"
+  echo "    PNETCDF_LIBDIR = ${PNETCDF_LIBDIR:-UNDEF}"
+  echo "   PNETCDF_VERSION = ${PNETCDF_VERSION:-UNDEF}"
+  echo "     PNETCDF_MAJOR = ${PNETCDF_MAJOR:-UNDEF}"
+  echo "     PNETCDF_MINOR = ${PNETCDF_MINOR:-UNDEF}"
+  echo "     PNETCDF_BUILD = ${PNETCDF_BUILD:-UNDEF}"
+
+  echo; sctxt "MCT toolkit parameters"
+  echo "           USE_MCT = ${USE_MCT:-no}"
+  echo "          MCT_ROOT = ${MCT_ROOT:-UNDEF}"
+  echo "        MCT_INCDIR = ${MCT_INCDIR:-UNDEF}"
+  echo "        MCT_LIBDIR = ${MCT_LIBDIR:-UNDEF}"
+  echo "      MCT_PARALLEL = ${MCT_PARALLEL:-UNDEF}"
+
+  echo; sctxt "ARPACK/PARPACK parameters"
+  echo "        USE_ARPACK = ${USE_ARPACK:-no}"
+  echo "       ARPACK_ROOT = ${ARPACK_ROOT:-UNDEF}"
+  echo "     ARPACK_INCDIR = ${ARPACK_INCDIR:-UNDEF}"
+  echo "     ARPACK_LIBDIR = ${ARPACK_LIBDIR:-UNDEF}"
+  echo "       USE_PARPACK = ${USE_PARPACK:-no}"
+  echo "      PARPACK_ROOT = ${PARPACK_ROOT:-UNDEF}"
+  echo "    PARPACK_INCDIR = ${PARPACK_INCDIR:-UNDEF}"
+  echo "    PARPACK_LIBDIR = ${PARPACK_LIBDIR:-UNDEF}"
+
+  echo; sctxt "ESMF parameters"
+  echo "          USE_ESMF = ${USE_ESMF:-no}"
+  echo "         ESMF_ROOT = ${ESMF_ROOT:-UNDEF}"
+  echo "       ESMF_INCDIR = ${ESMF_INCDIR:-UNDEF}"
+  echo "       ESMF_LIBDIR = ${ESMF_LIBDIR:-UNDEF}"
+  
+  echo; sctxt "JASPER parameters"
+  echo "        USE_JASPER = ${USE_JASPER:-no}"
+  echo "       JASPER_ROOT = ${JASPER_ROOT:-UNDEF}"
+  echo "     JASPER_INCDIR = ${JASPER_INCDIR:-UNDEF}"
+  echo "     JASPER_LIBDIR = ${JASPER_LIBDIR:-UNDEF}"
+
+  echo; sctxt "NCL parameters"
+  echo "           USE_NCL = ${USE_NCL:-no}"
+  echo "          NCL_ROOT = ${NCL_ROOT:-UNDEF}"
+  echo "        NCL_INCDIR = ${NCL_INCDIR:-UNDEF}"
+  echo "        NCL_LIBDIR = ${NCL_LIBDIR:-UNDEF}"
+  echo "         NCL_XLIBS = ${NCL_XLIBS:-UNDEF}"
+
+  echo; sctxt "Active Models and Components"
+  echo "       USE_ADJOINT = ${USE_ADJOINT:-no}"
+  echo "       USE_TANGENT = ${USE_TANGENT:-no}"
+  echo "   USE_REPRESENTER = ${USE_REPRESENTER:-no}"
+  echo "           USE_ICE = ${USE_ICE:-no}"
+  echo "          USE_ROMS = ${USE_ROMS:-no}"
+  echo "           USE_WRF = ${USE_WRF:-no}"
+  echo "          USE_SWAN = ${USE_SWAN:-no}"
+  echo "           USE_SED = ${USE_SED:-no}"
+  echo "        USE_INWAVE = ${USE_INWAVE:-no}"
+  echo "        USE_REFDIF = ${USE_REFDIF:-no}"
+  echo "    COUPLED_SYSTEM = ${COUPLED_SYSTEM:-no}"
+
+  echo; sctxt "OTHER ESSENTIAL parameters"
+  echo "              FORT = ${FORT:-UNDEF}"
+  echo "           COMPSYS = ${COMPSYS:-UNDEF}"
+  echo "            MPISYS = ${MPISYS:-UNDEF}"
+  echo "            MPIVER = ${MPIVER:-UNDEF}"
+}
+
+Clean_ROMS()
+{
+  local -i retval=0
+
+# Remove COAWST/ROMS build directory.
+
+  [ ${CLEAN} -le 0 ] && return 0
+
+  if `checkDIR -rx ${MY_ROMS_SRC}`; then
+    pushd ${MY_ROMS_SRC} > /dev/null 2>&1
+      make clean
+      retval=$?
+    popd > /dev/null 2>&1
+  fi
+
+  return ${retval}
+}
+
+Clean_WRF()
+{
+  local -i retval=0
+
+# Remove previous build files/directories in the COAWST/WRF directory.
+  
+  [ ${CLEANWRF} -le 0 ] && return 0
+
+  if `checkDIR -rx ${WRF_DIR}`; then
+    pushd ${WRF_DIR} > /dev/null 2>&1
+      [ -f configure.wrf ] && ./clean -a
+      [ -d netcdf_links  ] && rm -rf netcdf_links
+    popd > /dev/null 2>&1
+  fi
+
+  if `checkDIR -rx ${WPS_DIR}`; then
+    pushd ${WPS_DIR} > /dev/null 2>&1
+      [ -f configure.wps ] && ./clean -a
+      [ -d netcdf_links  ] && rm -rf netcdf_links
+      [ -d ncl_links     ] && rm -rf ncl_links
+    popd > /dev/null 2>&1
+  fi
+
+  return ${retval}
+}
+
+Configure_WRF()
+{
+  local -i retval=0
+  local conf_opt=
+
+  if [ -n "${USE_WRF:+1}" -o -n "${BUILD_WPS:+1}" ]; then
+
+    unset NETCDF PNETCDF NCARG_ROOT NCARG_XLIBS
+
+    export conf_opt="${WRF_OS:+-os ${WRF_OS}} ${WRF_MACH:+-mach ${WRF_MACH}}"
+
+    [ -n "${USE_DEBUG:+1}" ] && conf_opt="${conf_opt} -d"
+
+    if [ -n "${USE_JASPER:+1}" ]; then
+      if [ -n "${JASPER_INCDIR:-}" -a -n "${JASPER_LIBDIR:-}" ]; then
+        export JASPERINC="${JASPER_INCDIR}"
+        export JASPERLIB="${JASPER_LIBDIR}"
+      fi
+    fi
+
+    ########## WRF
+    # Make the netcdf_links/pnetcdf_links for COAWST/WRF.
+    if `checkDIR -rx ${WRF_DIR}`; then
+      pushd ${WRF_DIR} > /dev/null 2>&1
+        if [ -n "${NETCDF_INCDIR:+1}" -a -n "${NETCDF_LIBDIR:+1}" ]; then
+          [ ! -d netcdf_links ] && mkdir -p netcdf_links/{include,lib}
+          cd netcdf_links
+            # --- headers
+            ln -sf ${NETCDF_INCDIR}/* include/
+          
+            # --- libraries
+            ln -sf ${NETCDF_LIBDIR}/* lib/
+          cd ../
+          export NETCDF="${WRF_DIR}/netcdf_links"
+        fi
+
+        if [ -n "${USE_HDF5}" -a -n "${HDF5_INCDIR:+1}" -a -n "${HDF5_LIBDIR:+1}" ]; then
+          [ ! -d netcdf_links ] && mkdir -p netcdf_links/{include,lib}
+          cd netcdf_links
+            # --- headers
+            ln -sf ${HDF5_INCDIR}/* include/
+          
+            # --- libraries
+            ln -sf ${HDF5_LIBDIR}/* lib/
+          cd ../
+        fi
+
+        if [ -n "${USE_PNETCDF}" -a -n "${PNETCDF_INCDIR:+1}" -a -n "${PNETCDF_LIBDIR:+1}" ]; then
+          [ ! -d netcdf_links ] && mkdir -p netcdf_links/{include,lib}
+          cd netcdf_links
+            # --- headers
+            ln -sf ${PNETCDF_INCDIR}/* include/
+
+            # --- libraries
+            ln -sf ${PNETCDF_LIBDIR}/* lib/
+          cd ../
+          export PNETCDF="${WRF_DIR}/netcdf_links"
+        fi
+
+        [ ${CLEANWRF} -gt 0 ] && ./configure ${conf_opt}
+      popd > /dev/null 2>&1
+    fi
+  fi
+
+  ########## WPS
+  # Make the ncl_links and run configure in the WPS directory.
+  if [ -n "${BUILD_WPS:+1}" ]; then
+    if `checkDIR -rx ${WPS_DIR}`; then
+      pushd ${WPS_DIR} > /dev/null 2>&1
+        if [ -n "${USE_NCL:+1}" ]; then
+          [ ! -d ncl_links ] && mkdir -p ncl_links/{include,lib}
+          cd ncl_links
+            if `checkDIR -rx ${NCL_INCDIR}/ncarg`; then
+              ln -sf ${NCL_INCDIR}/ncarg include/
+            fi
+
+            # --- libraries
+              ln -sf ${NCL_LIBDIR}/* lib/
+          cd ../
+          export NCARG_ROOT="${WPS_DIR}/ncl_links"
+          export NCARG_XLIBS="${NCL_XLIBS}"
+        fi
+
+        #[ ${CLEANWPS} -gt 0 ] && ./configure ${conf_opt}
+        [ ${CLEANWPS} -gt 0 ] && ./configure
+      popd > /dev/null 2>&1
+    fi
+  fi
+}
+
+Install_ROMSFiles()
+{
+  local -i retval=0
+  local i j my_files
+  local out_dir="${MY_PROJECT_DIR}"
+  local my_USE_ROMS my_USE_SED
+
+  # The environment variables USE_* should be already set before calling this function.
+  my_USE_ROMS="`getYesNo "${USE_ROMS:-no}"`"
+  my_USE_SED="`getYesNo "${USE_SED:-no}"`"
+
+  # Return if WPS is not built.
+  [ "${my_BUILD_ROMS}" = "no" ] && return 0
+
+  # ------------------------------------------------------------
+  # Install various necessary data files.
+  if ! `checkDIR -rxw ${out_dir}/External`; then
+    mkdir -p "${out_dir}/External"
+  fi
+  install -m 0644 ${ROMS_DIR}/External/varinfo.dat ${out_dir}/External/
+
+  # ------------------------------------------------------------
+  # Install namelist templates and scripts for WPS on the GoM region.
+  my_files="gom-ocean*-tmpl gom-sediment*-tmpl
+            gom-s4dvar*-tmpl gom-floats*-tmpl
+            gom-bioFasham*-tmpl gom-usrfile*-tmpl
+           "
+  for i in gom-ocean*-tmpl gom-sediment*-tmpl
+  do
+    if `checkFILE -r ${i}`; then
+      j="$(echo ${i} | sed -e 's/gom-//g')"
+      j="`basename ${j}`"
+      echo "Installing -> ${out_dir}/${j}"
+      install -m 0644 ${i} ${out_dir}/${j}
+    fi
+  done
+}
+
+Install_WRFFiles()
+{
+  local -i retval=0
+  local i j my_files
+  local out_dir="${MY_PROJECT_DIR}/wrf"
+  local my_USE_WRF my_BUILD_WPS
+
+  # The environment variables USE_* should be already set before calling this function.
+  my_USE_WRF="`getYesNo "${USE_WRF:-no}"`"
+  my_BUILD_WPS="`getYesNo "${BUILD_WPS:-no}"`"
+
+  # Install the files only if WRF is built.
+  if [ "${my_USE_WRF}" = "yes" -o "${my_BUILD_WPS}" = "yes" ]; then
+
+    # ------------------------------------------------------------
+    # Install various WRF related directories and data files.
+    for i in Namelist_Files
+    do
+      if ! `checkDIR -rxw ${out_dir}/${i}`; then
+        mkdir -p "${out_dir}/${i}"
+      fi
+    done
+
+    ### WRF binaries
+    my_files="${WRF_DIR}/main/ndown.exe ${WRF_DIR}/main/nup.exe
+              ${WRF_DIR}/main/real.exe  ${WRF_DIR}/main/tc.exe
+              ${WRF_DIR}/main/wrf.exe
+             "
+    for i in ${my_files}
+    do
+      if `checkPROG -r ${i}`; then
+        j="`basename ${i}`"
+        echo "Installing -> ${out_dir}/${j}"
+        install -m 0755 ${i} ${out_dir}/${j}
+      fi
+    done
+    
+    ### WRF data, table files and namelist templates
+    my_files="${WRF_DIR}/run/*DATA* ${WRF_DIR}/run/*TBL*
+              ${WRF_DIR}/run/aerosol* ${WRF_DIR}/run/CAMtr_volume*
+              ${WRF_DIR}/run/co2_trans* ${WRF_DIR}/run/ozone*
+              ${WRF_DIR}/run/grib2map.tbl ${WRF_DIR}/run/gribmap.txt
+              ${WRF_DIR}/README* ${WRF_DIR}/configure.wrf
+              gom-namelist.input*-tmpl
+             "
+    for i in ${my_files}
+    do
+      if `checkFILE -r ${i}`; then
+        j="$(echo ${i} | sed -e 's/gom-//g')"
+        j="`basename ${j}`"
+        echo "Installing -> ${out_dir}/${j}"
+        install -m 0644 ${i} ${out_dir}/${j}
+      fi
+    done
+
+    ### namelist default files
+    my_files="${WRF_DIR}/test/em_real/namelist*"
+    for i in ${my_files}
+    do
+      if `checkFILE -r ${i}`; then
+        j="`basename ${i}`"
+        echo "Installing -> ${out_dir}/Namelist_Files/${j}"
+        install -m 0644 ${i} ${out_dir}/Namelist_Files/${j}
+      fi
+    done
+
+    ### make copies of the WRF DATA/TBL/input files in the main COAWST directory
+    if [ "X${MY_PROJECT_DIR}" != "X${MY_ROMS_SRC}" ]; then
+      pushd ${MY_PROJECT_DIR} > /dev/null 2>&1
+        my_files="${out_dir}/GENPARM.TBL  ${out_dir}/LANDUSE.TBL
+                  ${out_dir}/SOILPARM.TBL ${out_dir}/URBPARM.TBL
+                  ${out_dir}/VEGPARM.TBL
+                  ${out_dir}/RRTM_DATA    ${out_dir}/RRTM_DATA_DBL
+                  ${out_dir}/namelist.input*-tmpl
+                 "
+        for i in ${my_files}
+        do
+          if `checkFILE -r ${i}`; then
+            j="`basename ${i}`"
+            echo "Installing -> ${MY_PROJECT_DIR}/${j}"
+            install -m 0644 ${i} ${j}
+          fi
+        done
+      popd > /dev/null 2>&1
+    fi
+  fi # USE_WRF and BUILD_WPS
+}
+
+Install_WPSFiles()
+{
+  local -i retval=0
+  local i j my_files
+  local out_dir="${MY_PROJECT_DIR}/wps"
+  local my_BUILD_WPS
+
+  # The environment variables USE_* should be already set before calling this function.
+  my_BUILD_WPS="`getYesNo "${BUILD_WPS:-no}"`"
+
+  # Return if WPS is not built.
+  [ "${my_BUILD_WPS}" = "no" ] && return 0
+
+  # ------------------------------------------------------------
+  # Install various WPS related directories and data files.
+  for i in Variable_Tables Namelist_Files Geogrid_Tables Metgrid_Tables
+  do
+    if ! `checkDIR -rxw ${out_dir}/${i}`; then
+      mkdir -p "${out_dir}/${i}"
+    fi
+  done
+
+  ### Vtable files
+  my_files="${WPS_DIR}/ungrib/Variable_Tables/Vtable.*"
+  for i in ${my_files}
+  do
+    if `checkFILE -r ${i}`; then
+      j="`basename ${i}`"
+      echo "Installing -> ${out_dir}/Variable_Tables/${j}"
+      install -m 0644 ${i} ${out_dir}/Variable_Tables/${j}
+    fi
+  done
+
+  ### Geogrid tables/files
+  my_files="${WPS_DIR}/geogrid/GEOGRID.*
+            ${WPS_DIR}/geogrid/gribmap.txt
+           "
+  for i in ${my_files}
+  do
+    if `checkFILE -r ${i}`; then
+      j="`basename ${i}`"
+      echo "Installing -> ${out_dir}/Geogrid_Tables/${j}"
+      install -m 0644 ${i} ${out_dir}/Geogrid_Tables/${j}
+    fi
+  done
+
+  ### Metgrid tables/files
+  my_files="${WPS_DIR}/metgrid/METGRID.*
+            ${WPS_DIR}/metgrid/gribmap.txt
+           "
+  for i in ${my_files}
+  do
+    if `checkFILE -r ${i}`; then
+      j="`basename ${i}`"
+      echo "Installing -> ${out_dir}/Metgrid_Tables/${j}"
+      install -m 0644 ${i} ${out_dir}/Metgrid_Tables/${j}
+    fi
+  done
+
+  ### namelist default files
+  my_files="${WPS_DIR}/namelist.wps*"
+  for i in ${my_files}
+  do
+    if `checkFILE -r ${i}`; then
+      j="`basename ${i}`"
+      echo "Installing -> ${out_dir}/Namelist_Files/${j}"
+      install -m 0644 ${i} ${out_dir}/Namelist_Files/${j}
+    fi
+  done
+
+  ### WPS binaries and scripts
+  my_files="${WPS_DIR}/link_grib.csh
+            ${WPS_DIR}/geogrid/src/geogrid.exe   ${WPS_DIR}/metgrid/src/metgrid.exe
+            ${WPS_DIR}/ungrib/src/ungrib.exe     ${WPS_DIR}/ungrib/src/g1print.exe
+            ${WPS_DIR}/ungrib/src/g2print.exe    ${WPS_DIR}/util/src/avg_tsfc.exe
+            ${WPS_DIR}/util/src/calc_ecmwf_p.exe ${WPS_DIR}/util/src/height_ukmo.exe
+            ${WPS_DIR}/util/src/int2nc.exe       ${WPS_DIR}/util/src/mod_levs.exe
+            ${WPS_DIR}/util/src/plotfmt.exe      ${WPS_DIR}/util/src/plotgrids.exe
+            ${WPS_DIR}/util/src/rd_intermediate.exe
+           "
+  for i in ${my_files}
+  do
+    if `checkFILE -r ${i}`; then
+      j="`basename ${i}`"
+      echo "Installing -> ${out_dir}/${j}"
+      install -m 0755 ${i} ${out_dir}/${j}
+    fi
+  done
+
+  ### NCL scripts and other scripts
+  my_files="${WPS_DIR}/util/plotfmt_nc.ncl ${WPS_DIR}/util/plotgrids.ncl
+            ${WPS_DIR}/util/plotgrids_new.ncl
+           "
+  for i in ${my_files}
+  do
+    if `checkFILE -r ${i}`; then
+      j="`basename ${i}`"
+      echo "Installing -> ${out_dir}/${j}"
+      install -m 0644 ${i} ${out_dir}/${j}
+    fi
+  done
+
+  # ------------------------------------------------------------
+  # Install the required WRF executables for WPS to function properly.
+  my_files="${WRF_DIR}/main/real.exe"
+  for i in ${my_files}
+  do
+    if `checkFILE -r ${i}`; then
+      j="`basename ${i}`"
+      echo "Installing -> ${out_dir}/${j}"
+      install -m 0755 ${i} ${out_dir}/${j}
+    fi
+  done
+
+  # ------------------------------------------------------------
+  # Install namelist templates and scripts for WPS on the GoM region.
+  for i in gom-namelist*-tmpl
+  do
+    if `checkFILE -r ${i}`; then
+      j="$(echo ${i} | sed -e 's/gom-//g')"
+      j="`basename ${j}`"
+      echo "Installing -> ${out_dir}/${j}"
+      install -m 0644 ${i} ${out_dir}/${j}
+    fi
+  done
+  install -m 0644 functions_common ${out_dir}/
+  install -m 0755 run-wps.sh ${out_dir}/
+  sed -i "s/_MY_MODFILES_/${MODFILES:+${MODFILES}}/g" "${out_dir}/run-wps.sh"
+}
+
+Install_SWANFiles()
+{
+  local -i retval=0
+  local i j my_files
+  local out_dir="${MY_PROJECT_DIR}/wps"
+  local my_USE_SWAN
+
+  # The environment variables USE_* should be already set before calling this function.
+  my_USE_SWAN="`getYesNo "${USE_SWAN:-no}"`"
+
+  # Return if SWAN is not built.
+  [ "${my_USE_SWAN}" = "no" ] && return 0
+
+  # ------------------------------------------------------------
+  # Install various SWAN related directories and data files.
+
+  return 0
+}
+
+CoawstActiveModels()
+{
+  local -i retval=0
+  local head_file=
+  local inp_file="/tmp/active_models.c" out_file="/tmp/active_models"
+  local incs= cppflags= libs= command= err_str=
+
+  unset USE_ADJOINT USE_TANGENT USE_REPRESENTER USE_ICE
+  unset USE_ROMS USE_WRF USE_SWAN
+  unset USE_SED USE_INWAVE USE_REFDIF
+  unset COUPLED_SYSTEM
+
+  if [ -z "${ROMS_APPLICATION:-}" ]; then
+    echo " ### ERROR:: in CoawstActiveModels"
+    echo "     The ROMS_APPLICATION variable is not set:"
+    echo "       ROMS_APPLICATION = ${ROMS_APPLICATION:-UNDEF}"
+    echo "     Exiting now ..."
+    echo
+    exit 1
+  fi
+
+  if [ -z "${MY_HEADER_DIR:-}" ]; then
+    echo " ### ERROR:: in CoawstActiveModels"
+    echo "     The MY_HEADER_DIR variable is not set:"
+    echo "       MY_HEADER_DIR = ${MY_HEADER_DIR:-UNDEF}"
+    echo "     Exiting now ..."
+    echo
+    exit 1
+  fi
+
+  head_file="`echo "${ROMS_APPLICATION}" | sed -e 's/[ \t]//g' | tr [A-Z] [a-z]`.h"
+
+cat > ${inp_file} << EOF
+#include <stdio.h>
+#include <cppdefs.h>
+
+main( int argc, char *argv[], char *env[] )
+{
+  *argv++;
+
+  if (!strcmp(*argv,"adjoint")) {
+#   ifdef ADJOINT
+      printf("%s\n", "yes");
+#   else
+      printf("%s\n", "no");
+#   endif
+  }
+
+  if (!strcmp(*argv,"tangent")) {
+#   ifdef TANGENT
+      printf("%s\n", "yes");
+#   else
+      printf("%s\n", "no");
+#   endif
+  }
+
+  if (!strcmp(*argv,"tl_ioms")) {
+#   ifdef TL_IOMS
+      printf("%s\n", "yes");
+#   else
+      printf("%s\n", "no");
+#   endif
+  }
+
+  if (!strcmp(*argv,"ice")) {
+#   ifdef ICE_MODEL
+      printf("%s\n", "yes");
+#   else
+      printf("%s\n", "no");
+#   endif
+  }
+
+  if (!strcmp(*argv,"roms")) {
+#   ifdef ROMS_MODEL
+      printf("%s\n", "yes");
+#   else
+      printf("%s\n", "no");
+#   endif
+  }
+
+  if (!strcmp(*argv,"wrf")) {
+#   ifdef WRF_MODEL
+      printf("%s\n", "yes");
+#   else
+      printf("%s\n", "no");
+#   endif
+  }
+
+  if (!strcmp(*argv,"swan")) {
+#   ifdef SWAN_MODEL
+      printf("%s\n", "yes");
+#   else
+      printf("%s\n", "no");
+#   endif
+  }
+
+  if (!strcmp(*argv,"refdif")) {
+#   ifdef REFDIF_COUPLING
+      printf("%s\n", "yes");
+#   else
+      printf("%s\n", "no");
+#   endif
+  }
+
+  if (!strcmp(*argv,"inwave")) {
+#   ifdef INWAVE_MODEL
+      printf("%s\n", "yes");
+#   else
+      printf("%s\n", "no");
+#   endif
+  }
+
+  if (!strcmp(*argv,"sed")) {
+#   ifdef SEDIMENT
+      printf("%s\n", "yes");
+#   else
+      printf("%s\n", "no");
+#   endif
+  }
+
+  if (!strcmp(*argv,"coupled")) {
+#   ifdef MCT_LIB
+      printf("%s\n", "yes");
+#   else
+      printf("%s\n", "no");
+#   endif
+  }
+}
+EOF
+
+  incs="-I${MY_ROMS_SRC}/ROMS/Include"
+  cppflags="-DROMS_HEADER=\"${MY_HEADER_DIR}/${head_file}\""
+  command="gcc ${incs} ${cppflags} ${inp_file} -o ${out_file}"
+
+  err_str=`${command} 2>&1`
+  retval=$?
+
+  if [ ${retval} -ne 0 ]; then
+    echo " ### ERROR:: in CoawstActiveModels"
+    echo "     Could not determine the models used in COAWST because of compilation errors:"
+    echo "       ${command}"
+    echo
+    echo "       ${err_str}"
+    echo
+  else
+    if [ -x "${out_file}" ]; then
+      USE_ADJOINT=`${out_file} adjoint`
+        USE_ADJOINT=`getYesNo "${USE_ADJOINT:-no}"`
+        export USE_ADJOINT
+        [ "${USE_ADJOINT:-no}" = "no" ] && unset USE_ADJOINT
+
+      USE_TANGENT=`${out_file} tangent`
+        USE_TANGENT=`getYesNo "${USE_TANGENT:-no}"`
+        export USE_TANGENT
+        [ "${USE_TANGENT:-no}" = "no" ] && unset USE_TANGENT
+
+      USE_REPRESENTER=`${out_file} tl_ioms`
+        USE_REPRESENTER=`getYesNo "${USE_REPRESENTER:-no}"`
+        export USE_REPRESENTER
+        [ "${USE_REPRESENTER:-no}" = "no" ] && unset USE_REPRESENTER
+
+      USE_ICE=`${out_file} ice`
+        USE_ICE=`getYesNo "${USE_ICE:-no}"`
+        export USE_ICE
+        [ "${USE_ICE:-no}" = "no" ] && unset USE_ICE
+
+      USE_ROMS=`${out_file} roms`
+        USE_ROMS=`getYesNo "${USE_ROMS:-no}"`
+        export USE_ROMS
+        [ "${USE_ROMS:-no}" = "no" ] && unset USE_ROMS
+  
+      USE_WRF=`${out_file} wrf`
+        USE_WRF=`getYesNo "${USE_WRF:-no}"`
+        export USE_WRF
+        [ "${USE_WRF:-no}" = "no" ] && unset USE_WRF
+
+      USE_SWAN=`${out_file} swan`
+        USE_SWAN=`getYesNo "${USE_SWAN:-no}"`
+        export USE_SWAN
+        [ "${USE_SWAN:-no}" = "no" ] && unset USE_SWAN
+
+      USE_SED=`${out_file} sed`
+        USE_SED=`getYesNo "${USE_SED:-no}"`
+        export USE_SED
+        [ "${USE_SED:-no}" = "no" ] && unset USE_SED
+
+      USE_INWAVE=`${out_file} inwave`
+        USE_INWAVE=`getYesNo "${USE_INWAVE:-no}"`
+        export USE_INWAVE
+        [ "${USE_INWAVE:-no}" = "no" ] && unset USE_INWAVE
+
+      USE_REFDIF=`${out_file} refdif`
+        USE_REFDIF=`getYesNo "${USE_REFDIF:-no}"`
+        export USE_REFDIF
+        [ "${USE_REFDIF:-no}" = "no" ] && unset USE_REFDIF
+
+      COUPLED_SYSTEM=`${out_file} coupled`
+        COUPLED_SYSTEM=`getYesNo "${COUPLED_SYSTEM:-no}"`
+        export COUPLED_SYSTEM
+        [ "${COUPLED_SYSTEM:-no}" = "no" ] && unset COUPLED_SYSTEM
+    fi
+  fi
+
+  [ -f "${inp_file}" ] && rm -f "${inp_file}"
+  [ -f "${out_file}" ] && rm -f "${out_file}"
+
+  return ${retval}
+}
+
+#============================================================
+# END:: MODELLING SYSTEM BUILD FUNCTIONS
+#============================================================

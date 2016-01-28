@@ -1,0 +1,931 @@
+; PROGRAM :: Make_toGeo-Roms
+;   Creates the ROMS output files where the data are georeferenced
+;   to WGS84 ellipsoid. In addition interpolates the data to "rho" locations
+;   at standard z-levels
+
+;*******************************************************************************
+; START THE MAIN PROGRAM
+;*******************************************************************************
+
+;*******************************************************************************
+FUNCTION Ncdf_DefVar, fid, var_name, var_type, VAR_DIMS = var_dims
+
+  Compile_Opt HIDDEN, IDL2
+
+  On_Error, 2
+
+  numtypes = [2, 3, 12, 13, 14, 15]
+
+  num_val = where(numtypes eq size(fid, /type))
+  if ( num_val[0] eq -1 ) then $
+    message, "<fid> should be an integer number."
+
+  if ( size(var_name, /TNAME) ne 'STRING' ) then $
+    message, "<var_name> should be a string."
+
+  if ( size(var_type, /TNAME) ne 'STRING' ) then $
+    message, "<var_type> should be a string."
+
+
+  ;------------------------------------------------------------
+
+
+  is_BYTE   = 0
+  is_CHAR   = 0
+  is_DOUBLE = 0
+  is_FLOAT  = 0
+  is_LONG   = 0
+  is_SHORT  = 0
+  case strupcase(var_type) of
+      'BYTE': is_BYTE   = 1
+      'CHAR': is_CHAR   = 1
+    'STRING': is_CHAR   = 1
+    'DOUBLE': is_DOUBLE = 1
+     'FLOAT': is_FLOAT  = 1
+      'LONG': is_LONG   = 1
+     'SHORT': is_SHORT  = 1
+        else: message, '<var_type> unknown attribute value type'
+  endcase
+
+  if (n_elements(var_dims) eq 0) then begin
+    varid = ncdf_vardef(fid, var_name, $
+                        BYTE = is_BYTE, CHAR = is_CHAR, $
+                        STRING = is_CHAR, $
+                        DOUBLE = is_DOUBLE, FLOAT = is_FLOAT, $
+                        LONG = is_LONG, SHORT = is_SHORT)
+  endif else begin
+    varid = ncdf_vardef(fid, var_name, var_dims, $
+                        BYTE = is_BYTE, CHAR = is_CHAR, $
+                        STRING = is_CHAR, $
+                        DOUBLE = is_DOUBLE, FLOAT = is_FLOAT, $
+                        LONG = is_LONG, SHORT = is_SHORT)
+  endelse
+
+  return, varid
+end
+
+
+PRO Ncdf_AttDef, fid, vid, att_name, att_val, att_type
+
+  Compile_Opt HIDDEN, IDL2
+
+  On_Error, 2
+
+  if (n_params() ne 5) then $
+    message, "wrong number of parameters supplied."
+
+  numtypes = [2, 3, 12, 13, 14, 15]
+
+  num_val = where(numtypes eq size(fid, /type))
+  if ( num_val[0] eq -1 ) then $
+    message, "<fid> should be an integer number."
+
+  num_val = where(numtypes eq size(vid, /type))
+  if ( num_val[0] eq -1 ) then $
+    message, "<vid> should be an integer number."
+
+  if ( size(att_name, /TNAME) ne 'STRING' ) then $
+    message, "<att_name> should be a string."
+
+  if ( size(att_type, /TNAME) ne 'STRING' ) then $
+    message, "<att_type> should be a string."
+
+
+  ;------------------------------------------------------------
+
+
+  is_BYTE   = 0
+  is_CHAR   = 0
+  is_DOUBLE = 0
+  is_FLOAT  = 0
+  is_LONG   = 0
+  is_SHORT  = 0
+  case strupcase(att_type) of
+      'BYTE': is_BYTE   = 1
+      'CHAR': is_CHAR   = 1
+    'STRING': is_CHAR   = 1
+    'DOUBLE': is_DOUBLE = 1
+     'FLOAT': is_FLOAT  = 1
+      'LONG': is_LONG   = 1
+     'SHORT': is_SHORT  = 1
+        else: message, '<att_type> unknown attribute value type'
+  endcase
+
+  ncdf_attput, fid, vid, att_name, att_val, $
+               BYTE = is_BYTE, CHAR = is_CHAR, $
+               STRING = is_CHAR, $
+               DOUBLE = is_DOUBLE, FLOAT = is_FLOAT, $
+               LONG = is_LONG, SHORT = is_SHORT
+end
+
+
+FUNCTION Ncdf_SupportedVars_Roms, fname, NVARS
+
+  Compile_Opt HIDDEN, IDL2
+
+  On_Error, 2
+
+  if ( size(fname, /TNAME) ne 'STRING' ) then $
+    message, "<fname> should be a string."
+  if (not readFILE(fname)) Then $
+    message, "can't read from the supplied file <" + fname + ">."
+
+
+  ;------------------------------------------------------------
+  var_struct = { nam:'', dim:'', ndims:-1 }
+
+  ncid = ncdf_open(fname, /NOWRITE)
+    ncid_info = ncdf_inquire(ncid)
+
+    ; Mandatory variables to consider
+    req_var = [ 'h', 'lon_rho', 'lat_rho', 'mask_rho', 'ocean_time' ]
+    req_dim = [ 'r2dvar', 'r2dvar', 'r2dvar', 'r2dvar', '1dvar' ]
+    nREQ = n_elements(req_var)
+
+    ; Optional variables to consider
+    opt_var = [ 'rho0' ]
+    opt_dim = [ '0dvar' ]
+    nOPT = n_elements(opt_var)
+
+    ; Supported variables to consider
+    supp_struct = VarInfo_Roms()
+
+    ; Create an array of structures to hold all variables
+    var_array = replicate(var_struct, ncid_info.nvars + nREQ + nOPT)
+    nSTART = 0L
+
+
+    ; Check if the mandatory variable exists in the input file and
+    ; fill the var_array, otherwise print an error message and exit
+    for ivar = 0L, nREQ - 1 do begin
+      found = Ncdf_GetVarID(ncid, req_var[ivar])
+      if (found ge 0) then begin
+        Ncdf_GetVarDef, ncid, req_var[ivar], VAR_NDIMS = var_ndims
+        var_array[ivar + nSTART].nam   = req_var[ivar]
+        var_array[ivar + nSTART].dim   = req_dim[ivar]
+        var_array[ivar + nSTART].ndims = var_ndims
+      endif else begin
+        ncdf_close, ncid
+        message, 'the mandatory variable ' + req_var[ivar] + ' is not present in the input file'
+      endelse
+    endfor
+    nSTART = ivar
+
+
+    ; Check if the optional variable exists in the input file and
+    ; fill the var_array
+    for ivar = 0L, nOPT - 1 do begin
+      found = Ncdf_GetVarID(ncid, opt_var[ivar])
+      if (found ge 0) then begin
+        Ncdf_GetVarDef, ncid, opt_var[ivar], VAR_NDIMS = var_ndims
+        var_array[ivar + nSTART].nam   = opt_var[ivar]
+        var_array[ivar + nSTART].dim   = opt_dim[ivar]
+        var_array[ivar + nSTART].ndims = var_ndims
+      endif
+    endfor
+    nSTART = ivar
+
+
+    ; Search for all supported variables in the input file
+    for ivar = 0L, ncid_info.nvars - 1 do begin
+      tmp_str = (ncdf_varinq(ncid, ivar)).name
+      idx = (where(strcmp(supp_struct.nam, tmp_str) eq 1, count))[0]
+      if (count ne 0) then begin
+        Ncdf_GetVarDef, ncid, supp_struct[idx].nam, VAR_NDIMS = var_ndims
+        var_array[ivar + nSTART].nam   = supp_struct[idx].nam
+        var_array[ivar + nSTART].dim   = supp_struct[idx].dim
+        var_array[ivar + nSTART].ndims = var_ndims
+      endif
+    endfor
+  ncdf_close, ncid
+
+
+  idx = where((strcompress(var_array.nam, /REMOVE_ALL) ne '') and $
+              (strcompress(var_array.dim, /REMOVE_ALL) ne ''), NVARS)
+
+  if (NVARS ne 0) then begin
+    var_array = var_array[idx]
+  endif else begin
+    var_array = var_struct
+  endelse
+
+
+  return, var_array
+end
+
+
+FUNCTION VelStdName, var_name
+
+  Compile_Opt HIDDEN, IDL2
+
+  On_Error, 2
+
+  if ( size(var_name, /TNAME) ne 'STRING' ) then $
+    message, "<var_name> should be a string."
+
+  case 1 of
+    (strmatch(var_name, 'u', /FOLD_CASE) eq 1): $
+      std_name = 'eastward_sea_water_velocity'
+    (strmatch(var_name, 'v', /FOLD_CASE) eq 1): $
+      std_name = 'northward_sea_water_velocity'
+    (strmatch(var_name, 'w', /FOLD_CASE) eq 1): $
+      std_name = 'upward_sea_water_velocity'
+    (strmatch(var_name, 'ubar', /FOLD_CASE) eq 1): $
+      std_name = 'eastward_barotropic_sea_water_velocity'
+    (strmatch(var_name, 'vbar', /FOLD_CASE) eq 1): $
+      std_name = 'northward_barotropic_sea_water_velocity'
+    (strmatch(var_name, 'Uwind', /FOLD_CASE) eq 1): $
+      std_name = 'eastward_wind'
+    (strmatch(var_name, 'Vwind', /FOLD_CASE) eq 1): $
+      std_name = 'northward_wind'
+    else: std_name = ''
+  endcase
+
+  return, std_name
+end
+
+
+FUNCTION Int3DRhoStdZ, data, mask, zlevs, $
+                       r_zgrid, w_zgrid, dep_grid, $
+                       RLOC = rloc, $
+                       ULOC = uloc, $
+                       VLOC = vloc, $
+                       WLOC = wloc, $
+                       PLOC = ploc, $
+                       REVERSE  = reverse, $
+                       MASK_VAL = mask_val
+
+  Compile_Opt HIDDEN, IDL2
+
+  On_Error, 2
+
+  rloc = keyword_set(rloc)
+  uloc = keyword_set(uloc)
+  vloc = keyword_set(vloc)
+  wloc = keyword_set(wloc)
+  ploc = keyword_set(ploc)
+  if ((rloc + uloc + vloc + wloc + ploc) ne 1) then begin
+    message, 'one of [RLOC, ULOC, VLOC, WLOC, PLOC] should be set to continue with the calculations'
+  endif
+
+  ; ----- Check the input mask
+  ;       mask - The 2D array of the mask values at rho points
+  ;              0 = land, 1 = water
+  msk_dims  = size(mask, /DIMENSIONS)
+  nMSK_DIMS = n_elements(msk_dims)
+  if (nMSK_DIMS ne 2) then begin
+    message, 'only 2D arrays are supported for <mask>'
+  endif
+  LCELLSIDX = where(mask le 0, LCELLS, COMPLEMENT = WCELLSIDX, NCOMPLEMENT = WCELLS)
+  idim_rho = msk_dims[0]
+  jdim_rho = msk_dims[1]
+
+  ; ----- Check the input data
+  dims  = size(data, /DIMENSIONS)
+  nDIMS = n_elements(dims)
+  if (nDIMS ne 3) then begin
+    message, 'only 3D arrays are supported for <data>'
+  endif
+  idim = dims[0]
+  jdim = dims[1]
+  SLAY = (wloc eq 1) ? dims[2] - 1 : dims[2]
+
+  nZLEVS = n_elements(zlevs)
+
+  if (n_elements(mask_val) eq 0) then mask_val = !VALUES.F_NAN
+
+
+  ; ----------------------------------------
+
+
+  case 1 of
+    (rloc eq 1): $   ; horizontal rho-points
+      begin
+        if ( (idim ne idim_rho) and (jdim ne jdim_rho) ) then begin
+          message, 'inconsistent dimensions found for <data>, /RLOC'
+        endif
+        inp_data = data
+      end
+    (uloc eq 1): $   ; horizontal u-points
+      begin
+        if ( (idim ne (idim_rho - 1)) and (jdim ne jdim_rho) ) then begin
+          message, 'inconsistent dimensions found for <data>, /ULOC'
+        endif
+        inp_data = U2Rho(data, mask, MASK_VAL = mask_val)
+      end
+    (vloc eq 1): $   ; horizontal v-points
+      begin
+        if ( (idim ne idim_rho) and (jdim ne (jdim_rho - 1)) ) then begin
+          message, 'inconsistent dimensions found for <data>, /VLOC'
+        endif
+        inp_data = V2Rho(data, mask, MASK_VAL = mask_val)
+      end
+    (wloc eq 1): $   ; horizontal rho-points
+      begin
+        if ( (idim ne idim_rho) and (jdim ne jdim_rho) ) then begin
+          message, 'inconsistent dimensions found for <data>, /WLOC'
+        endif
+        inp_data = data
+      end
+    (ploc eq 1): $   ; horizontal psi-points
+      begin
+        if ( (idim ne (idim_rho - 1)) and (jdim ne (jdim_rho - 1)) ) then begin
+          message, 'inconsistent dimensions found for <data>, /PLOC'
+        endif
+        inp_data = P2Rho(data, mask, MASK_VAL = mask_val)
+      end
+    else:
+  endcase
+
+  out_data = make_array(idim_rho, jdim_rho, nZLEVS, $
+                        TYPE = size(data, /TYPE), VALUE = mask_val)
+
+  for igrd = 0L, WCELLS - 1 do begin
+    idx = array_indices([idim_rho, jdim_rho], WCELLSIDX[igrd], /DIMENSIONS)
+    ii = idx[0]
+    jj = idx[1]
+    thisStdLevs = zlevs
+    if (wloc eq 1) then begin
+      thisSigLevs = reform(w_zgrid[ii, jj, *])
+    endif else begin
+      thisSigLevs = reform(r_zgrid[ii, jj, *])
+    endelse
+    thisDepth = dep_grid[ii, jj]
+    thisData  = reform(inp_data[ii, jj, *])
+    tmpData   = VL_ObsZ2StdZ(thisData, thisSigLevs, thisStdLevs, thisDepth, $
+                             REVERSE = reverse, MISS_VAL = mask_val)
+    out_data[ii, jj, *] = tmpData
+  endfor
+
+  return, out_data
+end
+;*******************************************************************************
+
+CAST_ROOT  = ''
+CAST_BATH  = ''
+CAST_PLOTS = ''
+CAST_OUT   = ''
+
+
+CPU, TPOOL_NTHREADS = 1
+
+
+idl_ERRCODE = 0
+catch, idl_ERRCODE
+if (idl_ERRCODE ne 0) then begin
+  catch, /cancel
+  help, /LAST_MESSAGE
+  exit,  /NO_CONFIRM, STATUS = idl_ERRCODE
+endif
+
+
+BEG_TIMECOUNT = systime(/seconds)
+
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+; Initialize.
+@proj_setup
+
+REGION = 'Gulf of Mexico'
+
+; ----- begin/end dates for the current simulation
+BEG_DATE = '2010/01/01 00:00:00'
+END_DATE = '2010/01/01 00:00:00'
+
+; ----- bath_mask > 0 defines that the 'h' bath array
+;       is to be filled with a fill value at land points
+h_mask = 1
+
+; ----- DOM_NUMB represents the domain number in the input data
+;       data are stored in one file per domain ('', d01, d02, ...)
+;DOM_NUMB = 0
+DOM_NUMB = 1
+
+dnumber = (n_elements(DOM_NUMB) gt 0) ? fix(DOM_NUMB) : 0
+dom_str = (dnumber gt 0) ? string(dnumber, format = '("_d", i2.2)') : ''
+
+; ----- inpPFX represents the prefix to be used in the input file
+;       outPFX represents the prefix to be used in the output file
+inpPFX  = 'ocn_his'
+outPFX  = 'ocn_his_geo'
+
+; ----- INP_DIR directory for the input data files
+;       OUT_DIR directory for the output data files
+INP_DIR = rootDIR
+OUT_DIR = rootDIR
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+GetParams, REGION, PlotSize = 1150, Map_Coords = map_coords, $
+           Map_Proj = map_proj
+
+; For the appropriate lake/region to use please check first the file
+; proj_vars.pro and call first the GetParams procedure
+outstr = '/bin/echo -e ' + $
+         '"\n' + String('Running for: ', $
+                        Strupcase(RegionName), format = '(a, 1x, a)') + $
+         '\n" > /dev/stderr'
+Spawn, outstr
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+; Set the standard water depths
+; GDEM3 full profile, http://gcoos.org/products/index.php/model-resources/mean-temp-and-salinity-profiles-gdem-v3/
+;STD_DEPS = [ 0.00000, 2.00000, 4.00000, 6.00000, 8.00000, 10.0000, 15.0000, 20.0000, 25.0000, 30.0000, $
+;             35.0000, 40.0000, 45.0000, 50.0000, 55.0000, 60.0000, 65.0000, 70.0000, 75.0000, 80.0000, $
+;             85.0000, 90.0000, 95.0000, 100.000, 110.000, 120.000, 130.000, 140.000, 150.000, 160.000, $
+;             170.000, 180.000, 190.000, 200.000, 220.000, 240.000, 260.000, 280.000, 300.000, 350.000, $
+;             400.000, 450.000, 500.000, 550.000, 600.000, 650.000, 700.000, 750.000, 800.000, 850.000, $
+;             900.000, 950.000, 1000.00, 1100.00, 1200.00, 1300.00, 1400.00, 1500.00, 1600.00, 1800.00, $
+;             2000.00, 2200.00, 2400.00, 2600.00, 2800.00, 3000.00, 3200.00, 3400.00, 3600.00, 3800.00, $
+;             4000.00, 4200.00, 4400.00, 4600.00, 4800.00, 5000.00, 5200.00, 5400.00, 5600.00, 5800.00, $
+;             6000.00, 6200.00, 6400.00, 6600.00 ]
+
+STD_DEPS = [ 0.00000, 2.00000, 4.00000, 6.00000, 8.00000, 10.0000, 15.0000, 20.0000, 25.0000, 30.0000, $
+             35.0000, 40.0000, 45.0000, 50.0000, 55.0000, 60.0000, 65.0000, 70.0000, 75.0000, 80.0000, $
+             85.0000, 90.0000, 95.0000, 100.000, 110.000, 120.000, 130.000, 140.000, 150.000, 160.000, $
+             170.000, 180.000, 190.000, 200.000, 220.000, 240.000, 260.000, 280.000, 300.000, 350.000, $
+             400.000, 450.000, 500.000, 550.000, 600.000, 650.000, 700.000, 750.000, 800.000, 850.000, $
+             900.000, 950.000, 1000.00, 1100.00, 1200.00, 1300.00, 1400.00, 1500.00, 1600.00, 1800.00, $
+             2000.00, 2200.00, 2400.00, 2600.00, 2800.00, 3000.00, 3200.00, 3400.00, 3600.00, 3800.00, $
+             4000.00, 4200.00, 4400.00, 4600.00, 4800.00, 5000.00 ]
+
+nSTD_DEPS = n_elements(STD_DEPS)
+StdLevs = reverse(STD_DEPS)
+
+; Determine the number of requested records and their corresponding timestamps
+TIME_MAX = Get_Dates(BEG_DATE, END_DATE, $
+                     YR_OUT = curYR, MO_OUT = curMO, DA_OUT = curDA, $
+                     HR_OUT = curHR, MN_OUT = curMN, SC_OUT = curSC, $
+                     HR_INTERVALS = indgen(24), $
+                     MN_INTERVALS = [ 0 ], $
+                     YEAR_DAY   = year_day,  $
+                     ROMS_STAMP = roms_stamp)
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+; Loop through the files found and perform all necessary calculations
+iBEG = 0L
+iEND = TIME_MAX - 1
+
+for ifile = iBEG, iEND do begin
+  curYR_str = strtrim(string(curYR[ifile], format = '(i4.4)'), 2)
+
+  ; ----- Check for the existence of the ROMS input file
+  tmp_str = (inpPFX ne '') $
+              ? inpPFX + dom_str + '_' + roms_stamp[ifile] + '.nc' $
+              : dom_str + roms_stamp[ifile] + '.nc'
+  inp_file = FilePath(tmp_str, Root_Dir = INP_DIR)
+
+  if (not readFILE(inp_file)) then begin
+   ;print, 'skipping the data input file:' + inp_file
+   continue
+  endif else begin
+    print, 'working on the data input file: ' + inp_file
+  endelse
+
+  ; ----- Set the ROMS output file
+  tmp_str = (outPFX ne '') $
+              ? outPFX + dom_str + '_' + roms_stamp[ifile] + '.nc' $
+              : dom_str + roms_stamp[ifile] + '.nc'
+  out_file = FilePath(tmp_str, Root_Dir = OUT_DIR)
+
+  ; ----- Get the list of all supported variables from the ROMS input file
+  var_array = Ncdf_SupportedVars_Roms(inp_file, nVARS)
+  if (nVARS le 0) then begin
+    print, 'ERROR:: no supported data found'
+    print, '        skipping the data input file:' + inp_file
+    continue
+  endif
+
+
+  ;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+  ;%%%%% START THE CALCULATIONS
+  ;%%%%% Open the ROMS input file and dynamically write to the output file
+  ;%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+  ncid = ncdf_open(inp_file, /NOWRITE)
+
+
+    ; ----- Required input dimensions
+    ncdf_diminq, ncid, ncdf_dimid(ncid, 'xi_rho'), nm, xi_rho
+    ncdf_diminq, ncid, ncdf_dimid(ncid, 'eta_rho'), nm, eta_rho
+    ncdf_diminq, ncid, ncdf_dimid(ncid, 's_rho'), nm, s_rho
+    ncdf_diminq, ncid, ncdf_dimid(ncid, 'ocean_time'), nm, NT
+
+    ; ----- Read the mask array at RHO points to be used below
+    if (Ncdf_GetData(ncid, 'lon_rho', lon_rho) lt 0) then $
+      message, '<lon_rho> is not defined in ' + inp_file
+    if (Ncdf_GetData(ncid, 'lat_rho', lat_rho) lt 0) then $
+      message, '<lat_rho> is not defined in ' + inp_file
+    if (Ncdf_GetData(ncid, 'mask_rho', mask_rho) lt 0) then $
+      message, '<mask_rho> is not defined in ' + inp_file
+    if (Ncdf_GetData(ncid, 'Vtransform', vtran) lt 0) then $
+      message, '<Vtransform> is not defined in ' + inp_file
+    if (Ncdf_GetData(ncid, 'Vstretching', vstre) lt 0) then $
+      message, '<Vstretching> is not defined in ' + inp_file
+    if (Ncdf_GetData(ncid, 'theta_s', theta_s) lt 0) then $
+      message, '<theta_s> is not defined in ' + inp_file
+    if (Ncdf_GetData(ncid, 'theta_b', theta_b) lt 0) then $
+      message, '<theta_b> is not defined in ' + inp_file
+    if (Ncdf_GetData(ncid, 'Tcline', Tcline) lt 0) then $
+      message, '<Tcline> is not defined in ' + inp_file
+    if (Ncdf_GetData(ncid, 'h', dgrid) lt 0) then $
+      message, '<h> is not defined in ' + inp_file
+
+    LCELLSIDX = where(mask_rho le 0, LCELLS, COMPLEMENT = WCELLSIDX, NCOMPLEMENT = WCELLS)
+
+    SGrid, dgrid, s_rho, mask_rho,                                $
+           VTRANSFORM = vtran, VSTRETCHING = vstre,               $
+           S_THETA = theta_s, B_THETA = theta_b, TCLINE = Tcline, $
+           r_zarr = r_zgrid, w_zarr = w_zgrid,                    $
+           OUT_DEP = dep_grid
+
+
+    ; ----- Create a new ouput netcdf file and write the data in it
+    FILE_DELETE, out_file, /ALLOW_NONEXISTENT
+    ncid_out = ncdf_create(out_file, /CLOBBER)
+
+      ; ----- BEG:: Put the output file in define mode
+      ncdf_control, ncid_out, /NOFILL
+        ; ---------- define and set the dimensions
+        did_xi_rho  = ncdf_dimdef(ncid_out, 'xi_rho',     xi_rho)
+        did_eta_rho = ncdf_dimdef(ncid_out, 'eta_rho',    eta_rho)
+        did_depth   = ncdf_dimdef(ncid_out, 'Depth',      nSTD_DEPS)
+        did_time    = ncdf_dimdef(ncid_out, 'ocean_time', /UNLIMITED)
+
+        ; ---------- define the variables
+        varid = ncdf_vardef(ncid_out, 'Depth', did_depth, /DOUBLE)
+        ncdf_attput, ncid_out, varid, 'standard_name', 'depth', /CHAR
+        ncdf_attput, ncid_out, varid, 'units', 'meter', /CHAR
+        ncdf_attput, ncid_out, varid, 'positive', 'down', /CHAR
+        ncdf_attput, ncid_out, varid, 'axis', 'Z', /CHAR
+
+        if (h_mask gt 0) then undefine, h_fill, h_varid
+
+        for ivar = 0L, nVARS - 1 do begin
+          var_name    = var_array[ivar].nam
+          var_dimtype = var_array[ivar].dim
+          var_ndims   = var_array[ivar].ndims
+
+          var_d = Get_VarSpatDim(var_dimtype)
+
+          Ncdf_GetVarDef, ncid, var_name,           $
+                          VAR_ID      = varid,      $
+                          VAR_TYPE    = var_type,   $
+                          VAR_NDIMS   = var_ndims,  $
+                          VAR_NATTS   = var_natts,  $
+                          VAR_DIM     = var_dim,    $
+                          ATTR_NAMES  = attr_names
+
+          var_OK = 0
+          undefine, dims_out, crds_out
+          case 1 of
+            (var_d eq 0): $ ; scalar variable
+              begin
+                var_OK = 1
+              end
+            (var_d eq 1): $ ; vector variable
+              begin
+                ncdf_diminq, ncid, var_dim[0], tmp_name, tmp_size
+                tmp_info = ncdf_inquire(ncid_out)
+                for idim = 0L, tmp_info.ndims - 1 do begin
+                  ncdf_diminq, ncid_out, idim, dim_name, dim_size
+                  if (strcmp(dim_name, tmp_name) eq 1) then begin
+                    dims_out = (var_ndims eq (var_d + 1)) ? $
+                               [idim, did_time] : $
+                               [idim]
+                    var_OK = 1    
+                    break
+                  endif
+                endfor
+              end
+            (var_d eq 2): $ ; 2D variable
+              begin
+                dims_out = (var_ndims eq (var_d + 1)) ? $
+                           [did_xi_rho, did_eta_rho, did_time] : $
+                           [did_xi_rho, did_eta_rho]
+                crds_out = (var_ndims eq (var_d + 1)) ? $
+                           "lon_rho lat_rho ocean_time" : $
+                           "lon_rho lat_rho"
+                var_OK = (n_elements(dims_out) ne 0) ? 1 : 0
+              end
+            (var_d eq 3): $ ; 3D variable
+              begin
+                dims_out = (var_ndims eq (var_d + 1)) ? $
+                           [did_xi_rho, did_eta_rho, did_depth, did_time] : $
+                           [did_xi_rho, did_eta_rho, did_depth]
+                crds_out = (var_ndims eq (var_d + 1)) ? $
+                           "lon_rho lat_rho Depth ocean_time" : $
+                           "lon_rho lat_rho Depth"
+                var_OK = 1
+              end
+            else:
+          endcase
+
+          if (var_OK gt 0) then begin
+            varid_out = Ncdf_DefVar(ncid_out, var_name, var_type, VAR_DIMS = dims_out)
+            
+            ; Define the attibutes for the variable
+            var_std_name = VelStdName(var_name)
+            if (strcompress(var_std_name, /REMOVE_ALL) ne '') then begin
+               ncdf_attput, ncid_out, varid_out, 'standard_name', var_std_name, /CHAR
+            endif
+
+            for iatt = 0L, var_natts - 1 do begin
+              Result = ncdf_attcopy(ncid, varid, $
+                                    attr_names[iatt], ncid_out, varid_out)
+
+              if (h_mask gt 0) then begin
+                if (n_elements(h_fill) eq 0) then begin
+                  if (strcmp(attr_names[iatt], '_FillValue', /FOLD_CASE) eq 1) then begin
+                    ncdf_attget, ncid, varid, attr_names[iatt], h_fill
+                  endif
+                endif
+              endif
+
+              if (strcmp(var_name, 'ubar', /FOLD_CASE) eq 1) then begin
+                ncdf_attput, ncid_out, varid_out, 'long_name', 'vertically_integrated_u-momentum component', /CHAR
+              endif
+              if (strcmp(var_name, 'vbar', /FOLD_CASE) eq 1) then begin
+                ncdf_attput, ncid_out, varid_out, 'long_name', 'vertically_integrated_v-momentum component', /CHAR
+              endif
+              if (strcmp(var_name, 'Uwind', /FOLD_CASE) eq 1) then begin
+                ncdf_attput, ncid_out, varid_out, 'long_name', 'surface_u-wind component', /CHAR
+              endif
+              if (strcmp(var_name, 'Vwind', /FOLD_CASE) eq 1) then begin
+                ncdf_attput, ncid_out, varid_out, 'long_name', 'surface_v-wind component', /CHAR
+              endif
+
+              if (strcmp(attr_names[iatt], 'coordinates') eq 1) then begin
+                ncdf_attput, ncid_out, varid_out, attr_names[iatt], crds_out, /CHAR
+              endif
+            endfor
+          endif
+        endfor
+
+        ; Insert the global attributes
+        Result = Ncdf_GetGlobal(ncid, LIST = glob_names)
+        for iatt = 0L, n_elements(glob_names) - 1 do begin
+          Result = ncdf_attcopy(ncid, glob_names[iatt], ncid_out, $
+                                /IN_GLOBAL, /OUT_GLOBAL)
+        endfor
+
+        Ncdf_PutGlobal_Devel, ncid_out
+        Ncdf_PutGlobal, ncid_out, 'institution', string(10B) + CoapsAddress()
+        Ncdf_PutGlobal, ncid_out, 'conversion', 'converted from spherical coordinates to WGS84 ellipsoid coordinates'
+      ncdf_control, ncid_out, /ENDEF
+
+      if ( (h_mask gt 0) and (n_elements(h_fill) ne 0) ) then begin
+        Ncdf_GetVarDef, ncid_out, 'h', VAR_ID = varid_out
+        if (varid ge 0) then begin
+          ncdf_control, ncid_out, /REDEF
+            Ncdf_AttDef,  ncid_out, varid_out, '_FillValue', h_fill, size(dgrid, /TNAME)
+          ncdf_control, ncid_out, /ENDEF
+        endif else begin
+          undefine, h_fill
+        endelse
+      endif
+      ; ----- END:: Put the output file in define mode
+
+
+      ; ----- BEG:: Output file is in data mode
+      ncdf_varput, ncid_out, ncdf_varid(ncid_out, 'Depth'), STD_DEPS
+
+      ; The WGS64 lat/lon pairs
+      VL_Sphere2WGS, lon_rho, lat_rho, $
+                     LONS_OUT = lon_rho_geo, LATS_OUT = lat_rho_geo
+
+      for ivar = 0L, nVARS - 1 do begin
+        var_name    = var_array[ivar].nam
+        var_dimtype = var_array[ivar].dim
+        var_ndims   = var_array[ivar].ndims
+
+        var_d = Get_VarSpatDim(var_dimtype)
+
+        found = Ncdf_GetData(ncid, var_name, var_data, FILL_VAL = var_fill)
+        case 1 of
+          ((var_d eq 0) or (var_d eq 1)): $
+            begin
+              ncdf_varput, ncid_out, ncdf_varid(ncid_out, var_name), var_data
+            end
+          (var_d eq 2): $
+            begin
+              case 1 of
+                (strmatch(var_dimtype, 'r2dvar', /FOLD_CASE) eq 1) : $
+                  begin
+                    if (var_ndims eq (var_d + 1)) then begin
+                      for iREC = 0L, NT - 1 do begin
+                        out_data = reform(var_data[*, *, iREC])
+
+                        if (strcmp(var_name, 'lon_rho', /FOLD_CASE) eq 1) then $
+                          out_data[*, *] = lon_rho_geo
+
+                        if (strcmp(var_name, 'lat_rho', /FOLD_CASE) eq 1) then $
+                          out_data[*, *] = lat_rho_geo
+
+                        if (strcmp(var_name, 'h', /FOLD_CASE) eq 1) then begin
+                          if ( (h_mask gt 0) and (n_elements(h_fill) ne 0) ) then $
+                            out_data[LCELLSIDX] = h_fill
+                        endif
+
+                        ncdf_varput, ncid_out, ncdf_varid(ncid_out, var_name), out_data, $
+                                     OFFSET = [0, 0, iREC], COUNT = [xi_rho, eta_rho, 1]
+                      endfor
+                    endif else begin
+                      out_data = var_data
+
+                      if (strcmp(var_name, 'lon_rho', /FOLD_CASE) eq 1) then $
+                        out_data[*, *] = lon_rho_geo
+
+                      if (strcmp(var_name, 'lat_rho', /FOLD_CASE) eq 1) then $
+                        out_data[*, *] = lat_rho_geo
+
+                      if (strcmp(var_name, 'h', /FOLD_CASE) eq 1) then begin
+                        if ( (h_mask gt 0) and (n_elements(h_fill) ne 0) ) then $
+                          out_data[LCELLSIDX] = h_fill
+                      endif
+
+                      ncdf_varput, ncid_out, ncdf_varid(ncid_out, var_name), out_data
+                    endelse
+                  end
+                (strmatch(var_dimtype, 'u2dvar', /FOLD_CASE) eq 1) : $
+                  begin
+                    if (var_ndims eq (var_d + 1)) then begin
+                      for iREC = 0L, NT - 1 do begin
+                        out_data = U2Rho(reform(var_data[*, *, iREC]), mask_rho, MASK_VAL = var_fill)
+                        ncdf_varput, ncid_out, ncdf_varid(ncid_out, var_name), out_data, $
+                                     OFFSET = [0, 0, iREC], COUNT = [xi_rho, eta_rho, 1]
+                      endfor
+                    endif else begin
+                      out_data = U2Rho(var_data, mask_rho, MASK_VAL = var_fill)
+                      ncdf_varput, ncid_out, ncdf_varid(ncid_out, var_name), out_data
+                    endelse
+                  end
+                (strmatch(var_dimtype, 'v2dvar', /FOLD_CASE) eq 1) : $
+                  begin
+                    if (var_ndims eq (var_d + 1)) then begin
+                      for iREC = 0L, NT - 1 do begin
+                        out_data = V2Rho(reform(var_data[*, *, iREC]), mask_rho, MASK_VAL = var_fill)
+                        ncdf_varput, ncid_out, ncdf_varid(ncid_out, var_name), out_data, $
+                                     OFFSET = [0, 0, iREC], COUNT = [xi_rho, eta_rho, 1]
+                      endfor
+                    endif else begin
+                      out_data = V2Rho(var_data, mask_rho, MASK_VAL = var_fill)
+                      ncdf_varput, ncid_out, ncdf_varid(ncid_out, var_name), out_data
+                    endelse
+                  end
+                (strmatch(var_dimtype, 'p2dvar', /FOLD_CASE) eq 1) : $
+                  begin
+                    if (var_ndims eq (var_d + 1)) then begin
+                      for iREC = 0L, NT - 1 do begin
+                        out_data = P2Rho(reform(var_data[*, *, iREC]), mask_rho, MASK_VAL = var_fill)
+                        ncdf_varput, ncid_out, ncdf_varid(ncid_out, var_name), out_data, $
+                                     OFFSET = [0, 0, iREC], COUNT = [xi_rho, eta_rho, 1]
+                      endfor
+                    endif else begin
+                      out_data = P2Rho(var_data, mask_rho, MASK_VAL = var_fill)
+                      ncdf_varput, ncid_out, ncdf_varid(ncid_out, var_name), out_data
+                    endelse
+                  end
+                else:
+              endcase
+            end
+          (var_d eq 3): $
+            begin
+              case 1 of
+                (strmatch(var_dimtype, 'r3dvar', /FOLD_CASE) eq 1) : $
+                  begin
+                    if (var_ndims eq (var_d + 1)) then begin
+                      for iREC = 0L, NT - 1 do begin
+                        out_data = Int3DRhoStdZ(reform(var_data[*, *, *, iREC]), $
+                                                mask_rho, StdLevs, $
+                                                r_zgrid, w_zgrid, dep_grid, $
+                                                /RLOC, /REVERSE, $
+                                                MASK_VAL = var_fill)
+                        ncdf_varput, ncid_out, ncdf_varid(ncid_out, var_name), out_data, $
+                                     OFFSET = [0, 0, 0, iREC], COUNT = [xi_rho, eta_rho, nSTD_DEPS, 1]
+                      endfor
+                    endif else begin
+                      out_data = Int3DRhoStdZ(var_data, $
+                                              mask_rho, StdLevs, $
+                                              r_zgrid, w_zgrid, dep_grid, $
+                                              /RLOC, /REVERSE, $
+                                              MASK_VAL = var_fill)
+                      ncdf_varput, ncid_out, ncdf_varid(ncid_out, var_name), out_data
+                    endelse
+                  end
+                (strmatch(var_dimtype, 'u3dvar', /FOLD_CASE) eq 1) : $
+                  begin
+                    if (var_ndims eq (var_d + 1)) then begin
+                      for iREC = 0L, NT - 1 do begin
+                        out_data = Int3DRhoStdZ(reform(var_data[*, *, *, iREC]), $
+                                                mask_rho, StdLevs, $
+                                                r_zgrid, w_zgrid, dep_grid, $
+                                                /ULOC, /REVERSE, $
+                                                MASK_VAL = var_fill)
+                        ncdf_varput, ncid_out, ncdf_varid(ncid_out, var_name), out_data, $
+                                     OFFSET = [0, 0, 0, iREC], COUNT = [xi_rho, eta_rho, nSTD_DEPS, 1]
+                      endfor
+                    endif else begin
+                      out_data = Int3DRhoStdZ(var_data, $
+                                              mask_rho, StdLevs, $
+                                              r_zgrid, w_zgrid, dep_grid, $
+                                              /ULOC, /REVERSE, $
+                                              MASK_VAL = var_fill)
+                      ncdf_varput, ncid_out, ncdf_varid(ncid_out, var_name), out_data
+                    endelse
+                  end
+                (strmatch(var_dimtype, 'v3dvar', /FOLD_CASE) eq 1) : $
+                  begin
+                    if (var_ndims eq (var_d + 1)) then begin
+                      for iREC = 0L, NT - 1 do begin
+                        out_data = Int3DRhoStdZ(reform(var_data[*, *, *, iREC]), $
+                                                mask_rho, StdLevs, $
+                                                r_zgrid, w_zgrid, dep_grid, $
+                                                /VLOC, /REVERSE, $
+                                                MASK_VAL = var_fill)
+                        ncdf_varput, ncid_out, ncdf_varid(ncid_out, var_name), out_data, $
+                                     OFFSET = [0, 0, 0, iREC], COUNT = [xi_rho, eta_rho, nSTD_DEPS, 1]
+                      endfor
+                    endif else begin
+                      out_data = Int3DRhoStdZ(var_data, $
+                                              mask_rho, StdLevs, $
+                                              r_zgrid, w_zgrid, dep_grid, $
+                                              /VLOC, /REVERSE, $
+                                              MASK_VAL = var_fill)
+                      ncdf_varput, ncid_out, ncdf_varid(ncid_out, var_name), out_data
+                    endelse
+                  end
+                (strmatch(var_dimtype, 'w3dvar', /FOLD_CASE) eq 1) : $
+                  begin
+                    if (var_ndims eq (var_d + 1)) then begin
+                      for iREC = 0L, NT - 1 do begin
+                        out_data = Int3DRhoStdZ(reform(var_data[*, *, *, iREC]), $
+                                                mask_rho, StdLevs, $
+                                                r_zgrid, w_zgrid, dep_grid, $
+                                                /WLOC, /REVERSE, $
+                                                MASK_VAL = var_fill)
+                        ncdf_varput, ncid_out, ncdf_varid(ncid_out, var_name), out_data, $
+                                     OFFSET = [0, 0, 0, iREC], COUNT = [xi_rho, eta_rho, nSTD_DEPS, 1]
+                      endfor
+                    endif else begin
+                      out_data = Int3DRhoStdZ(var_data, $
+                                              mask_rho, StdLevs, $
+                                              r_zgrid, w_zgrid, dep_grid, $
+                                              /WLOC, /REVERSE, $
+                                              MASK_VAL = var_fill)
+                      ncdf_varput, ncid_out, ncdf_varid(ncid_out, var_name), out_data
+                    endelse
+                  end
+                (strmatch(var_dimtype, 'p3dvar', /FOLD_CASE) eq 1) : $
+                  begin
+                    if (var_ndims eq (var_d + 1)) then begin
+                      for iREC = 0L, NT - 1 do begin
+                        out_data = Int3DRhoStdZ(reform(var_data[*, *, *, iREC]), $
+                                                mask_rho, StdLevs, $
+                                                r_zgrid, w_zgrid, dep_grid, $
+                                                /PLOC, /REVERSE, $
+                                                MASK_VAL = var_fill)
+                        ncdf_varput, ncid_out, ncdf_varid(ncid_out, var_name), out_data, $
+                                     OFFSET = [0, 0, 0, iREC], COUNT = [xi_rho, eta_rho, nSTD_DEPS, 1]
+                      endfor
+                    endif else begin
+                      out_data = Int3DRhoStdZ(var_data, $
+                                              mask_rho, StdLevs, $
+                                              r_zgrid, w_zgrid, dep_grid, $
+                                              /PLOC, /REVERSE, $
+                                              MASK_VAL = var_fill)
+                      ncdf_varput, ncid_out, ncdf_varid(ncid_out, var_name), out_data
+                    endelse
+                  end
+                else:
+              endcase
+            end
+          else:
+        endcase
+      endfor
+      ; ----- END:: Output file is in data mode
+
+    ncdf_close, ncid_out
+
+  ncdf_close, ncid
+
+endfor
+
+END_TIMECOUNT = systime(/seconds)
+theTIME = END_TIMECOUNT - BEG_TIMECOUNT
+if (theTIME le 60.0) then begin
+  print
+  print, 'Sigma to Z-levels interpolation time: ', theTIME, 's', format = '(a, f7.2, 2x, a1)'
+  print
+endif else begin
+  print
+  print, 'Sigma to Z-levels interpolation time: ', theTIME / 60.0, 'min', format = '(a, f7.2, 2x, a3)'
+  print
+endelse
+
+end

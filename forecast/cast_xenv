@@ -1,0 +1,38 @@
+LocDate="2015-12-07 23:47:59"
+BegDate="2015-12-03 00:00:00"
+FcastDate="2015-12-08 00:00:00"
+EndDate="2015-12-13 00:00:00"
+MODE="forecast"
+MODE_PFX="forecast-"
+MODE_STR="forecast-2015120800"
+DataDir="/Net/fcaster/home/FORECAST/Data/forecast-2015120800"
+OutDir="/Net/fcaster/home/FORECAST/Output/forecast-2015120800"
+BryDir="/Net/fcaster/home/FORECAST/Data/forecast-2015120800/boundary"
+IniDir="/Net/fcaster/home/FORECAST/Data/forecast-2015120800/ini"
+IdlDir="/Net/fcaster/home/FORECAST/idl"
+MatDir="/Net/fcaster/home/FORECAST/matlab"
+LogDir="/Net/fcaster/home/FORECAST/Logs/forecast-2015120800"
+PlotDir="/Net/fcaster/home/FORECAST/plots/forecast-2015120800"
+WebDir="/Net/fcaster/forecasts/forecast-2015120800"
+WpsDir="/Net/fcaster/home/FORECAST/wps"
+DATA_INTERVAL=6
+OcnSST=1
+MODULE_FILES="intel12 intel12-openmpi"
+
+CONVERT="convert"
+
+IDL_CMD="idl -quiet -queue"
+
+MAT_CMD="matlab -nodesktop -nosplash"
+
+USE_PARALLEL=1
+GPARAL="parallel"
+GPARAL_OPTS_GLB="--gnu --no-run-if-empty -vv --verbose --progress --halt 1"
+GPARAL_OPTS_SSH="--filter-hosts --slf .."
+GPARAL_OPTS_TIME="--timeout 3600"
+GPARAL_OPTS_RESUME="--resume-failed --retries 1"
+
+GLBHC_I0=2198
+GLBHC_I1=2823
+GLBHC_J0=1630
+GLBHC_J1=2050

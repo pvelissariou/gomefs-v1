@@ -1,0 +1,1315 @@
+# Author:  Panagiotis Velissariou <pvelissariou@fsu.edu>
+#                                 <velissariou.1@osu.edu>
+# Version: 1.3
+#
+# Version - 1.3 Fri Jul 26 2013
+# Version - 1.2 Sun Jul 21 2013
+# Version - 1.1 Wed Jul 25 2012
+# Version - 1.0 Thu Apr 15 2004
+
+#------------------------------------------------------------
+# UTILITY FUNCTIONS
+#
+
+forceError()
+{
+  local -i status=1
+
+  [ "X${1}" != "X" ] && echo -n  "${1}"
+
+  exit ${status}
+}
+
+getYesNo()
+{
+  local param= answer=
+  
+  param=`echo "${1}" | tr [A-Z] [a-z]`
+  case "${param}" in
+    y|yes|yea|yeah|yep) answer="yes" ;;
+     n|no|not|nop|nope) answer="no"  ;;
+                     *) answer="no"  ;; # DEFAULT
+  esac
+
+  echo -n ${answer}
+}
+
+# -------------------------------------------------------
+# checkDIR()
+# Usage:      checkDIR [options] dir
+# Parameters: dir (string)
+# Returns:    1 if the options are not met or, no arguments
+#             were supplied or, the dir is an empty string
+#             0 in any other case (success)
+# Echoes:     NONE
+#
+# Possible options are:
+# -h FILE exists and is a symbolic link (same as -L)
+# -L FILE exists and is a symbolic link (same as -h)
+# -r FILE exists and is readable
+# -x FILE exists and is executable
+# -w FILE exists and is writable
+#
+# Checks if the directory "dir" is a valid directory
+# based on the options supplied. If no options supplied
+# it simply checks that if "dir" is a directory
+# -------------------------------------------------------
+checkDIR()
+{
+  local -i retval=0
+  local get_opts my_arg="" chk_my_arg="" my_opts="-d" iopt
+# Use these to reset the options since the shell does not
+# do that automatically
+  local opt_id=${OPTIND} opt_arg="${OPTARG}"
+
+  [ $# -eq 0 ] && { retval=1; return ${retval}; }
+
+  while getopts ":hLrxw" get_opts
+  do
+    case ${get_opts} in
+      h|L) my_opts="${my_opts} -h";;
+        r) my_opts="${my_opts} -r";;
+        x) my_opts="${my_opts} -x";;
+        w) my_opts="${my_opts} -w";;
+        *) ;; # DEFAULT
+    esac
+  done
+
+# Get the first argument after the options
+  shift $(( ${OPTIND} - 1))
+  my_arg=${1}
+
+# Reset the option variables since the shell doesn't do it
+  OPTIND=${opt_id}
+  OPTARG="${opt_arg}"
+
+  chk_my_arg="`echo "${my_arg##*/}" | sed -e 's/[ \t]//g'`"
+  [ "X${my_arg}" = "X" ] && { retval=1; return ${retval}; }
+
+  for iopt in ${my_opts}
+  do
+    [ ! ${iopt} ${my_arg} ] && { retval=1; return ${retval}; }
+  done
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# checkFILE()
+# Usage:      checkFILE [options] file
+# Parameters: file (string)
+# Returns:    1 if the options are not met or, no arguments
+#             were supplied or, the file is an empty string
+#             0 in any other case (success)
+# Echoes:     NONE
+#
+# Possible options are:
+# -h FILE exists and is a symbolic link (same as -L)
+# -L FILE exists and is a symbolic link (same as -h)
+# -r FILE exists and is readable
+# -s FILE exists and has a size greater than zero
+# -w FILE exists and is writable
+#
+# Checks if the file "file" is a valid file
+# based on the options supplied. If no options supplied
+# it simply checks that if "file" is a a regular file
+# -------------------------------------------------------
+checkFILE()
+{
+  local -i retval=0
+  local get_opts my_arg="" chk_my_arg="" my_opts="-f" iopt
+# Use these to reset the options since the shell does not
+# do that automatically
+  local opt_id=${OPTIND} opt_arg="${OPTARG}"
+
+  [ $# -eq 0 ] && { retval=1; return ${retval}; }
+
+  while getopts ":hLrsw" get_opts
+  do
+    case ${get_opts} in
+      h|L) my_opts="${my_opts} -h";;
+        r) my_opts="${my_opts} -r";;
+        s) my_opts="${my_opts} -s";;
+        w) my_opts="${my_opts} -w";;
+        *) ;; # DEFAULT
+    esac
+  done
+
+# Get the first argument after the options
+  shift $(( ${OPTIND} - 1))
+  my_arg=${1}
+
+# Reset the option variables since the shell doesn't do it
+  OPTIND=${opt_id}
+  OPTARG="${opt_arg}"
+
+  chk_my_arg="`echo "${my_arg##*/}" | sed -e 's/[ \t]//g'`"
+  [ "X${my_arg}" = "X" ] && { retval=1; return ${retval}; }
+
+  for iopt in ${my_opts}
+  do
+    [ ! ${iopt} ${my_arg} ] && { retval=1; return ${retval}; }
+  done
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# checkPROG()
+# Usage:      checkPROG [options] program
+# Parameters: program (string)
+# Returns:    1 if the options are not met or, no arguments
+#             were supplied or, the program is an empty string
+#             0 in any other case (success)
+# Echoes:     NONE
+#
+# Possible options are:
+# -h FILE exists and is a symbolic link (same as -L)
+# -L FILE exists and is a symbolic link (same as -h)
+# -r FILE exists and is readable
+# -s FILE exists and has a size greater than zero
+#
+# Checks if the program "program" is a valid executable
+# program based on the options supplied. If no options
+# supplied it simply checks that if "program" is an
+# executable program
+# -------------------------------------------------------
+checkPROG()
+{
+  local -i retval=0
+  local get_opts my_arg="" chk_my_arg="" my_opts="-f -x" iopt
+# Use these to reset the options since the shell does not
+# do that automatically
+  local opt_id=${OPTIND} opt_arg="${OPTARG}"
+
+  [ $# -eq 0 ] && { retval=1; return ${retval}; }
+
+  while getopts ":hLrs" get_opts
+  do
+    case ${get_opts} in
+      h|L) my_opts="${my_opts} -h";;
+        r) my_opts="${my_opts} -r";;
+        s) my_opts="${my_opts} -s";;
+        *) ;; # DEFAULT
+    esac
+  done
+
+# Get the first argument after the options
+  shift $(( ${OPTIND} - 1))
+  my_arg=${1}
+
+# Reset the option variables since the shell doesn't do it
+  OPTIND=${opt_id}
+  OPTARG="${opt_arg}"
+
+  chk_my_arg="`echo "${my_arg##*/}" | sed -e 's/[ \t]//g'`"
+  [ "X${chk_my_arg}" = "X" ] && { retval=1; return ${retval}; }
+
+  for iopt in ${my_opts}
+  do
+    [ ! ${iopt} ${my_arg} ] && { retval=1; return ${retval}; }
+  done
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# strstr()
+# Usage:      strstr s1 s2
+# Parameters: s1 s2 (strings)
+# Returns:    1 if s2 does not occur in s1
+#
+# Strstr echoes a substring starting at the first
+# occurrence of string s2 in string s1, or nothing
+# if s2 does not occur in the string. If s2 points
+# to a string of zero length, strstr echoes s1.
+# -------------------------------------------------------
+function strstr ()
+{
+  local -i retval=0
+  local first=
+
+# if s2 points to a string of zero length, strstr echoes s1
+  if [ ${#2} -eq 0 ]; then
+    echo -n "${1}"
+    return ${retval}
+  fi
+
+# strstr echoes nothing if s2 does not occur in s1
+  case "$1" in
+  *$2*) ;;
+     *) return ${retval};;
+  esac
+
+# use the pattern matching code to strip off the match and everything
+# following it
+  first=${1/$2*/}
+
+# then strip off the first unmatched portion of the string
+  echo -n "${1##$first}"
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# strTrim()
+# Usage:      strTrim s1 flag
+# Parameters: s1 (string), flag (integer)
+# Returns:    None
+#
+# strTrim echoes s1 with the leading and/or trailing
+# white spaces removed.
+#
+# flag: A value that controls the action of strTrim.
+#       If flag is zero or not present, trailing blanks are removed.
+#       Leading blanks are removed if it is equal to 1.
+#       Both are removed if it is equal to 2.
+#       In any other case, trailing blanks are removed.
+# -------------------------------------------------------
+function strTrim ()
+{
+  local -i trimFLG=0
+  local out_str=
+
+  trimFLG=$(String_getInteger "${2}" 0)
+
+  case ${trimFLG} in
+    0) out_str="$(echo "${1}" | sed 's/[ \t]*$//')" ;;
+    1) out_str="$(echo "${1}" | sed 's/^[ \t]*//')" ;;
+    2) out_str="$(echo "${1}" | sed 's/^[ \t]*//;s/[ \t]*$//')" ;;
+    *) out_str="$(echo "${1}" | sed 's/[ \t]*$//')" ;;
+  esac
+
+  echo -n "${out_str}"
+}
+
+# -------------------------------------------------------
+# isNumber()
+# Usage:      isNumber var
+# Parameters: var
+# Returns:    1 if var is not a number
+#             0 in any other case
+# Echoes:     NONE
+# -------------------------------------------------------
+isNumber ()
+{
+  local -i retval=0
+
+  [ $# -eq 0 ] && { retval=1; return ${retval}; }
+
+  if ! [[ "$1" =~ ^[-+]?[0-9]+([.][0-9]+)?$ ]] ; then
+     retval=1
+  else
+     retval=0
+  fi
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# isInteger()
+# Usage:      isInteger var
+# Parameters: var
+# Returns:    1 if var is not an integer (including 0)
+#             0 in any other case
+# Echoes:     NONE
+# -------------------------------------------------------
+isInteger()
+{
+  local -i num retval=0
+
+  [ $# -eq 0 ] && { retval=1; return ${retval}; }
+
+# 0 is not an integer?
+  [ "X${1}" = "X0" ] && return ${retval}
+
+# $? is the exit status of the let thread
+# 0 means success.
+  (let num="${1}") 2>/dev/null
+  retval=$?
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# getInteger()
+# Usage:      getInteger int
+# Parameters: int (int >=0 or, int < 0)
+# Returns:    1 if var is not an integer
+#             0 in any other case
+# Echoes:     int, if it is a valid integer (including 0),
+#             in any other case echoes an empty string
+# -------------------------------------------------------
+getInteger()
+{
+  local -i retval=0
+  local echoval= minus=
+
+  # strip spaces, '+' signs and '-' signs
+  # if the first character of the string is '-', set the minus variable
+  echoval="`echo "${1}" | sed 's/[ \t+]//g'`"
+  [ "X`echo "${echoval:0:1}"`" = "X-" ] && minus="-"
+  echoval="${minus}`echo "${echoval}" | sed 's/[ \t-]//g'`"
+
+  if isInteger ${echoval}; then
+    echoval="$(echo "scale=0; ${echoval}" | bc -ql 2>/dev/null)"
+    retval=$?
+    echoval="${echoval:-0}"
+  else
+    echoval=
+    retval=1
+  fi
+
+  echo -n "${echoval}"
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# getPosInteger()
+# Usage:      getPosInteger posint
+# Parameters: posint (posint >= 0)
+# Returns:    1 if var is not a positive integer
+#             0 in any other case
+# Echoes:     posint if it is a valid positive integer
+#             (including 0), in any other case echoes an
+#             empty string
+# -------------------------------------------------------
+getPosInteger()
+{
+  local -i retval=0
+  local echoval=
+
+  echoval=$( getInteger "${1}" )
+  retval=$?
+
+  if [ ${retval} -ne 0 ] ; then
+    echoval=
+    retval=1
+  else
+    if [ ${echoval} -lt 0 ]; then
+      echoval=
+      retval=1
+    fi
+  fi
+
+  echo -n ${echoval}
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# getNegInteger()
+# Usage:      getNegInteger negint
+# Parameters: negint (negint < 0)
+# Returns:    1 if var is not a negative integer
+#             0 in any other case
+# Echoes:     negint if it is a valid negative integer,
+#             in any other case echoes an empty string
+# -------------------------------------------------------
+getNegInteger()
+{
+  local -i retval=0
+  local echoval=
+
+  echoval=$( getInteger "${1}" )
+  retval=$?
+
+  if [ ${retval} -ne 0 ] ; then
+    echoval=
+    retval=1
+  else
+    if [ ${echoval} -ge 0 ]; then
+      echoval=
+      retval=1
+    fi
+  fi
+
+  echo -n ${echoval}
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# getYearDays()
+# Usage:      getYearDays year
+# Parameters: year (year >= 0)
+# Returns:    NONE
+# Echoes:     the number of the days in the year (365/366)
+#             if year is not a valid positive integer
+#             (including 0) echoes an empty string
+# -------------------------------------------------------
+getYearDays()
+{
+  local -i retval=0
+  local echoval=
+
+  if [ "X`getPosInteger ${1}`" != "X" ]; then
+    echoval=`expr 365`
+    if [ `expr ${1} % 4` = 0 ]  &&
+       [ `expr ${1} % 100` != 0 ] ||
+       [ `expr ${1} % 400` = 0 ] ; then
+         echoval=`expr 366`
+    fi
+  else
+    retval=1
+  fi
+
+  echo -n ${echoval}
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# getYearString()
+# Usage:      getYearString year
+# Parameters: year (9999 >= year >= 0)
+# Returns:    NONE
+# Echoes:     the zero padded string of the year that is,
+#             0001, 0015, 0232, 1325, ...
+#             if year is not a valid positive integer
+#             echoes an empty string
+# -------------------------------------------------------
+getYearString()
+{
+  local -i retval=0
+  local echoval=
+
+  if [ "X`getPosInteger ${1}`" != "X" ]; then
+    [ ${1} -lt 10   ]                       && echoval="000${1}"
+    [ ${1} -ge 10   ] && [ ${1} -lt 100   ] && echoval="00${1}"
+    [ ${1} -ge 100  ] && [ ${1} -lt 1000  ] && echoval="0${1}"
+    [ ${1} -ge 1000 ] && [ ${1} -lt 10000 ] && echoval="${1}"
+  else
+    retval=1
+  fi
+
+  echo -n ${echoval}
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# getMonthDays()
+# Usage:      getMonthDays year month
+# Parameters: year (year >= 0)
+#             month (1 <= month <= 12)
+# Returns:    NONE
+# Echoes:     the number of the days in the month of the year
+#             if year is not a valid positive integer
+#             (including 0) echoes an empty string
+# -------------------------------------------------------
+getMonthDays()
+{
+  local -i retval=0 yrDAYS=0 myMO=0
+  local echoval=
+
+  if [ $# -lt 2 ]; then
+    echo "ERROR:: getMonthDays: Need to define the year and the month."
+    echo "        use: getMonthDays year month"
+    echo "        Exiting now ..."
+    echo -n
+    exit 1
+  fi
+
+  yrDAYS="`getYearDays ${1}`"
+  if [ $? -ne 0 ]; then
+    echo "ERROR:: getMonthDays: Wrong year."
+    echo "        Exiting now ..."
+    echo -n
+    retval=1
+    exit 1
+  fi
+
+  myMO="`getPosInteger ${2}`"
+    [ -z "${myMO}" ] && myMO=0
+  [ ${myMO} -lt 1 -o ${myMO} -gt 12 ] && myMO=0
+
+  case ${myMO} in
+     1) echoval=31 ;;
+     2) echoval=28
+        [ ${yrDAYS} -eq 366 ] && echoval=29
+        ;;
+     3) echoval=31 ;;
+     4) echoval=30 ;;
+     5) echoval=31 ;;
+     6) echoval=30 ;;
+     7) echoval=31 ;;
+     8) echoval=31 ;;
+     9) echoval=30 ;;
+    10) echoval=31 ;;
+    11) echoval=30 ;;
+    12) echoval=31 ;;
+     *) echo "ERROR:: getMonthDays: Wrong month."
+        echo "        Exiting now ..."
+        echo -n
+        retval=1
+        exit 1
+        ;;
+  esac
+
+  echo -n ${echoval}
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# getDayString()
+# Usage:      getDayString day
+# Parameters: day (366 >= day >= 0)
+# Returns:    NONE
+# Echoes:     the zero padded string of the day that is,
+#             001, 015, 232, ...
+#             if day is not a valid positive integer
+#             echoes an empty string
+# -------------------------------------------------------
+getDayString()
+{
+  local -i retval=0
+  local echoval=
+
+  if [ "X`getPosInteger ${1}`" != "X" ]; then
+    [ ${1} -lt 10  ]                     && echoval="00${1}"
+    [ ${1} -ge 10  ] && [ ${1} -lt 100 ] && echoval="0${1}"
+    [ ${1} -ge 100 ] && [ ${1} -le 366 ] && echoval="${1}"
+  else
+    retval=1
+  fi
+
+  echo -n ${echoval}
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# getHourString()
+# Usage:      getHourString hour
+# Parameters: hour (23 >= hour >= 0)
+# Returns:    NONE
+# Echoes:     the zero padded string of the hour that is,
+#             00, 09, 12, ...
+#             if hour is not a valid positive integer
+#             (including 0) echoes an empty string
+# -------------------------------------------------------
+getHourString()
+{
+  local -i retval=0
+  local echoval=
+
+  if [ "X`getPosInteger ${1}`" != "X" ]; then
+    [ ${1} -lt 10 ] && echoval="0${1}"
+    [ ${1} -ge 10 ] && [ ${1} -le 24  ] && echoval="${1}"
+  else
+    retval=1
+  fi
+
+  echo -n ${echoval}
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# get2DString()
+# Usage:      get2DString number (integer)
+# Parameters: number (99 >= number >= 0)
+# Returns:    NONE
+# Echoes:     the zero padded string of the number that is,
+#             00, 09, 12, ...
+#             if number is not a valid positive integer
+#             (including 0) echoes an empty string
+# -------------------------------------------------------
+get2DString()
+{
+  local -i retval=0
+  local echoval=
+
+  if [ "X`getPosInteger ${1}`" != "X" ]; then
+    [ ${1} -lt 10 ] && echoval="0${1}"
+    [ ${1} -ge 10 ] && [ ${1} -le 99 ] && echoval="${1}"
+  else
+    retval=1
+  fi
+
+  echo -n ${echoval}
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# get3DString()
+# Usage:      get3DString number (integer)
+# Parameters: number (999 >= number >= 0)
+# Returns:    NONE
+# Echoes:     the zero padded string of the number that is,
+#             00, 09, 12, ...
+#             if number is not a valid positive integer
+#             (including 0) echoes an empty string
+# -------------------------------------------------------
+get3DString()
+{
+  local -i retval=0
+  local echoval=
+
+  if [ "X`getPosInteger ${1}`" != "X" ]; then
+    [ ${1} -lt  10 ] && echoval="00${1}"
+    [ ${1} -ge  10 ] && [ ${1} -le  99 ] && echoval="0${1}"
+    [ ${1} -ge 100 ] && [ ${1} -le 999 ] && echoval="${1}"
+  else
+    retval=1
+  fi
+
+  echo -n ${echoval}
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# escapeSTR()
+# Usage:      escapeSTR inp_string
+# Parameters:
+#  inp_string   : the input string on which this function is applied
+#                 to escape special characters used in bash/sed ...
+# Returns :   none
+# Echoes  :   the modified string with its special characters escaped
+# Exports :   none
+#
+# escapeSTR escapes special characters in a string: "'()/[]*
+# -------------------------------------------------------
+escapeSTR()
+{
+  echo -n "$(echo "${1}" | sed -e "s/[\"\'\(\)\/\*]/\\\&/g;s/\[/\\\&/g;s/\]/\\\&/g")"
+}
+
+# -------------------------------------------------------
+# searchFILE()
+# Usage:      searchFILE inp_fname inp_dirs message
+# Parameters:
+#   inp_fname   : the input file to search for, STRING
+#   inp_dirs    : the list of directories to search in, STRING
+#                 default="."
+#   message     : the number of values to be written in, STRING
+#                 default="the requested file"
+# Returns :   the status of search, 0 = success
+# Echoes  :   none
+# Exports :   the full path of the file if found, STRING
+#
+# searchFILE searches for a file in a list of directories 
+# -------------------------------------------------------
+searchFILE()
+{
+  local -i chkFLAG=1
+  local in_file in_dirs out_file
+  local idir
+
+  unset foundFilePath
+
+  if [ $# -lt 1 ]; then
+    echo "ERROR:: searchFILE usage:"
+    echo "        searchFILE filename [dirs to search] [message to display]"
+    echo "Exiting now ..."
+    exit 1
+  fi
+
+  in_file="${1}"
+  in_dirs="${2:-.}"
+
+  for idir in ${in_dirs}
+  do
+    out_file="${idir}/${in_file}"
+
+    checkFILE -r "${out_file}"
+    chkFLAG=$?
+    [ ${chkFLAG} -eq 0 ] && break
+  done
+
+  export foundFilePath="${out_file}"
+  
+  return ${chkFLAG}
+}
+
+# -------------------------------------------------------
+# linkFILE()
+# Usage:      linkFILE inp_fname inp_dirs message
+# Parameters:
+#   file1   : the name of the file to link against
+#   file2   : the name of the link
+#
+# Returns :   0 (success), or >0 (failure)
+# Echoes  :   none
+# Exports :   none
+#
+# linkFILE makes a link to a file
+# -------------------------------------------------------
+linkFILE()
+{
+  local -i retval=0
+  local file1 file2
+
+  if [ $# -lt 2 ]; then
+    echo "ERROR:: linkFILE usage:"
+    echo "        linkFILE filename1 filename2"
+    echo "Exiting now ..."
+    exit 1
+  fi
+
+  file1="${1}"
+  file2="${2}"
+
+  if [ "X${file1}" != "X${file2}" ]; then
+    [ -L ${file2} ] && rm -f ${file2} 2>&1 > /dev/null
+    [ ! -e ${file2} ] && ln -sf ${file1} ${file2} 2>&1 > /dev/null
+    retval=$?
+  fi
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# Get_BlockText()
+# Usage:      Get_BlockText inp_fname var_name
+# Parameters:
+#   inp_fname         : the input file to search for the
+#                       variable "var_name", STRING
+#   var_name          : the variable name to search for, STRING
+# Returns:    1 if error
+#
+# Get_BlockText exports the multi-line text starting
+# the first line that contains the string "var_name"
+# and ending at a blank line or at the line that does not
+# contain the continuation character "\".
+# The following global variables are set:
+#   bl_first      : contains the first line of the block text
+#   bl_first_nline: contains the line number in the input file
+#                   of the first line of the block text
+#   bl_text       : contains the text of consecutive lines
+#                   in the block
+#   bl_nlines     : contains the total number of lines
+#                   in the block text
+# -------------------------------------------------------
+Get_BlockText()
+{
+  local -i retval=0
+  local in_file= in_var=
+
+  unset bl_first bl_text bl_first_nline bl_nlines
+
+  if [ $# -lt 2 ]; then
+    bl_text=""
+    bl_first=""
+    bl_first_nline=-1
+    bl_nlines=-1
+    export bl_first bl_text bl_first_nline bl_nlines
+    return 1
+  fi
+
+  in_file="${1}"
+  in_var="^[ \t]*`echo "${2}" | sed -e 's/[()]/\\\&/g'`[ \t]*="
+
+  if ! `checkFILE -r "${in_file}"`; then
+    echo "ERROR:: Get_BlockText: Couldn't locate the input file: ${in_file}"
+    echo "Exiting now ..."
+    exit 1
+  fi
+
+  bl_first="`grep -Ei "${in_var}" "${in_file}"`"
+  bl_first_nline="`grep -nEi "${in_var}" "${in_file}"`"
+  bl_first_nline="`echo "${bl_first_nline}" | sed 's/:/ /g' | awk '{print $1}'`"
+  bl_first_nline=$(( ${bl_first_nline} + 0 ))
+
+  bl_nlines=0
+  if [ -n "${bl_first:+1}" ]; then
+    bl_text="cat ${in_file} | awk 'BEGIN{IGNORECASE=1} /${in_var}/,/^$/ || /^[^\\\]*$/'"
+    bl_text="$( eval ${bl_text} )"
+    bl_nlines="$( echo "${bl_text}" | wc -l )"
+  fi
+
+  export bl_first bl_text bl_first_nline bl_nlines
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# Make_BlockText()
+# Usage:      Make_BlockText inp_fname var_name var_vals var_vals_per_line
+# Parameters:
+#   inp_fname         : the input file to search for the
+#                       variable "var_name", STRING
+#   var_name          : the variable name to search for, STRING
+#   var_vals          : the value(s) of the variable to be set,
+#                       separated by spaces, STRING
+#   var_vals_per_line : the number of values to be written in
+#                       each line of the output, POSITIVE INTEGER
+#   eqsigns           : the number of equal signs to be used for
+#                       the variable, POSITIVE INTEGER
+#                       var_name = var_vals, OR
+#                       var_name == var_vals
+# Returns:    1 if error
+# Echoes :    the multi-line string that contains the block text
+#             that defines the variable to be set
+#
+# Make_BlockText creates the block text to be used in 
+# function "Put_BlockText".
+# -------------------------------------------------------
+Make_BlockText()
+{
+  local -i retval=0 ival imod vals_perline eqsigns
+  local in_file
+  local in_var in_vals eq_var
+  local bl_var bl_var_blank
+  local tmp_file=tmp_block_text_file.tmp
+
+  if [ $# -lt 3 ]; then
+    echo "ERROR:: Make_BlockText usage:"
+    echo "        Make_BlockText filename varname varvalues [values per line]"
+    echo "Exiting now ..."
+    exit 1
+  fi
+
+  in_file="${1}"
+  in_var="${2}"
+  in_vals=( ${3} )
+  vals_perline=$(( ${4:-1} + 0 ))
+    [ ${vals_perline} -le 0 ] && vals_perline=1
+  eqsigns=$(( ${5:-2} + 0 ))
+    [ ${eqsigns} -le 1 ] && eq_var="="
+    [ ${eqsigns} -ge 2 ] && eq_var="=="
+
+  retval=$?
+
+  if ! `checkFILE -r "${in_file}"`; then
+    echo "Couldn't locate the input file: ${in_file}"
+    echo "Exiting now ..."
+    exit 1
+  fi
+
+  bl_var="`echo "${in_var}" | sed -e 's/[()]/\\\&/g'`"
+  bl_var="`grep -Ei -m 1 "^[[:space:]]*${bl_var}[[:space:]]*=" "${in_file}" 2>&1`"
+  bl_var="`echo "${bl_var}" | sed -e 's/\!.*//g' | sed -e "s/\(.*${in_var}\).*/\1/"`"
+  bl_var="`echo "${bl_var}"` ${eq_var}"
+  bl_var_blank="`echo "${bl_var}" | sed -e 's/./ /g'`"
+  retval=$?
+
+  [ -f ${tmp_file} ] && rm -f ${tmp_file}
+
+  for ((ival = 0; ival < ${#in_vals[@]}; ival++))
+  do
+    imod=$(( ${ival} % ${vals_perline} ))
+    if [ ${ival} -ne 0 -a ${imod} -eq 0 ]; then
+      echo -n " \\"              >> ${tmp_file}
+      echo                       >> ${tmp_file}
+      echo -n "${bl_var_blank}"  >> ${tmp_file}
+    fi
+    if [ ${ival} -eq 0 ]; then
+      echo -n "${bl_var}"        >> ${tmp_file}
+    fi
+    echo -n " ${in_vals[$ival]}" >> ${tmp_file}
+    if [ ${ival} -eq $(( ${#in_vals[@]} - 1 )) ]; then
+      echo                       >> ${tmp_file}
+    fi
+  done
+
+  echo -n "$( cat ${tmp_file} )"
+  retval=$?
+
+  [ -f ${tmp_file} ] && rm -f ${tmp_file}
+
+  return ${retval}
+}
+
+# -------------------------------------------------------
+# Put_BlockText()
+# Usage:      Put_BlockText inp_fname var_name rep_text
+# Parameters:
+#   inp_fname         : the input file to search for the
+#                       variable "var_name", STRING
+#   var_name          : the variable name to search for, STRING
+#   rep_text          : the text to replace the "var_name" text
+#                       in "inp_fname", STRING
+
+# Returns:    1 if error
+#
+# Put_BlockText creates the modified input file, where
+# the block text that defines the variable "var_name"
+# is replaced by the block text in "rep_text".
+# -------------------------------------------------------
+Put_BlockText()
+{
+  local -i retval=0 in_file_lines=0 nl=0
+  local in_var rep_text in_file
+  local tmp_inp_txtfile="tmp_inp_text_file.tmp"
+  local tmp_rep_txtfile="tmp_rep_text_file.tmp"
+  local tmp_in_file="tmp_in_file.tmp"
+  local tmp_head_file="tmp_head_file.tmp"
+  local tmp_tail_file="tmp_tail_file.tmp"
+
+  if [ $# -lt 3 ]; then
+    echo "ERROR:: Put_BlockText usage:"
+    echo "        Put_BlockText filename search_string replacement_text"
+    echo "Exiting now ..."
+    exit 1
+  fi
+
+  in_file="${1}"
+  in_var="${2}"
+  rep_text="${3}"
+
+  if ! `checkFILE -r "${in_file}"`; then
+    echo "Couldn't locate the input file: ${in_file}"
+    echo "Exiting now ..."
+    exit 1
+  fi
+
+  Get_BlockText "${in_file}" "${in_var}"
+  retval="$?"
+
+  if [ "${bl_first_nline}" -le 0 -o "${bl_nlines}" -le 0 ]; then
+    unset bl_first bl_text bl_first_nline bl_nlines
+    return 1
+  fi
+
+  in_file_lines=$( cat "${in_file}" | wc -l )
+  if [ "${in_file_lines}" -lt "${bl_nlines}" ]; then
+    unset bl_first bl_text bl_first_nline bl_nlines
+    return 1
+  fi
+
+  echo "${bl_text}"  > ${tmp_inp_txtfile}
+
+  echo "${rep_text}" > ${tmp_rep_txtfile}
+
+    nl=$(( ${bl_first_nline} - 1 ))
+  head -n ${nl} "${in_file}" > ${tmp_head_file}
+  retval="$?"
+
+    nl=$(( ${in_file_lines} - ${bl_first_nline} - ${bl_nlines} + 1 ))
+  tail -n ${nl} "${in_file}" > ${tmp_tail_file}
+  retval="$?"
+
+  cat ${tmp_head_file} ${tmp_rep_txtfile} ${tmp_tail_file} > ${tmp_in_file}
+  retval="$?"
+
+  rm -f ${tmp_inp_txtfile} ${tmp_rep_txtfile}
+  rm -f ${tmp_head_file} ${tmp_tail_file}
+  unset bl_first bl_text bl_first_nline bl_nlines
+
+  if [ ${retval} -eq 0 ]; then
+    rm -f "${in_file}"
+    mv -f "${tmp_in_file}" "${in_file}"
+  fi
+
+  return ${retval}
+}
+
+ncdf_getGlobVar()
+{
+  local -i retval=0
+  local in_file in_var chk_cdf
+  local out_var
+
+  unset ncdfVarVal
+
+  if [ $# -lt 2 ]; then
+    echo "ERROR:: ncdf_getGlobVar usage:"
+    echo "        ncdf_getGlobVar filename varname"
+    echo "Exiting now ..."
+    retval=1
+    exit 1
+  fi
+
+  in_file="${1}"
+  in_var="`echo "${2}" | sed -e 's/[()]/\\\&/g'`"
+
+  if ! `checkFILE -r "${in_file}"`; then
+    echo "ERROR:: ncdf_getGlobVar: Couldn't locate the input file:"
+    echo "          file = ${in_file}"
+    echo "        Exiting now ..."
+    exit 1
+  else
+    chk_cdf="`od -An -c -N4 ${in_file} | grep -v "command.*not.*found" | sed 's/ //g' | grep CDF`"
+    if [ -z "${chk_cdf}" ]; then
+     echo "ERROR:: ncdf_getGlobVar: input file should be a NetCDF file"
+     echo "          file = ${in_file}"
+     echo "        Exiting now ..."
+     exit 1
+    fi
+  fi
+
+  out_var="$( ncdump -h ${in_file} 2>&1 | grep -Ei "^[[:space:]]*${in_var}[[:space:]]*=" )"
+  out_var="$( echo "${out_var}" | sed -e 's/.*=//g' | sed 's/[;:,_\{\}]/ /g' )"
+
+  export ncdfVarVal="${out_var}"
+
+  return ${retval}
+}
+
+ncdf_getVar()
+{
+  local -i retval=0
+  local in_file in_var in_opt chk_cdf
+  local out_var
+
+  unset ncdfVarVal
+
+  if [ $# -lt 2 ]; then
+    echo "ERROR:: ncdf_getVar usage:"
+    echo "        ncdf_getVar filename varname"
+    echo "Exiting now ..."
+    retval=1
+    exit 1
+  fi
+
+  in_file="${1}"
+  in_var="`echo "${2}" | sed -e 's/[()]/\\\&/g'`"
+  in_opt="${3:--v}"
+
+  if ! `checkFILE -r "${in_file}"`; then
+    echo "ERROR:: ncdf_getVar: Couldn't locate the input file:"
+    echo "          file = ${in_file}"
+    echo "        Exiting now ..."
+    exit 1
+  else
+    chk_cdf="`od -An -c -N4 ${in_file} | grep -v "command.*not.*found" | sed 's/ //g' | grep CDF`"
+    if [ -z "${chk_cdf}" ]; then
+     echo "ERROR:: ncdf_getVar: input file should be a NetCDF file"
+     echo "          file = ${in_file}"
+     echo "        Exiting now ..."
+     exit 1
+    fi
+  fi
+
+  out_var="$( ncdump ${in_opt} ${in_var} ${in_file} 2>&1 | sed -e '1,/data:/d' -e '/^}/,$d')"
+  out_var=( $( echo "${out_var}" | sed -e 's/.*=//g' | sed 's/[;:,_\{\}]/ /g' ) )
+
+  export ncdfVarVal="${out_var[@]}"
+
+  return ${retval}
+}
+
+String_FormDbl()
+{
+  local -i retval=0
+  local in_str def_val out_str
+
+  in_str="${1:-}"
+  def_val="${2:-}"
+  out_str=
+
+  if [ -n "${def_val:+1}" ]; then
+    def_val="$(echo "${def_val}" | awk '{print $1}')d0"
+  fi
+
+  if [ -n "${in_str:+1}" ]; then
+    out_str="$(echo "${in_str}" | awk '{print $1}')"
+    [ "X`strstr "${out_str}" "\."`" = "X" ] && \
+      out_str="$(echo "${out_str}" | awk '{printf "%.1f", $1}')"
+    out_str="$(echo ${out_str})d0"
+  fi
+
+  [ -z "${out_str:-}" ] && out_str="${def_val:-}"
+
+  echo -n "${out_str}"
+}
+
+String_getInteger()
+{
+  local -i retval=0
+  local in_str def_val out_str
+
+  in_str="${1:-}"
+  def_val="${2:-}"
+  out_str=
+
+  if [ -n "${def_val:+1}" ]; then
+    def_val="$(echo "${def_val}" | awk '{print $1}')"
+    def_val="$(getInteger "${def_val}")"
+  fi
+
+  if [ -n "${in_str:+1}" ]; then
+    out_str="$(echo ${in_str} | awk '{print $1}')"
+    out_str="$(getInteger "${out_str}")"
+  fi
+
+  [ -z "${out_str:-}" ] && out_str="${def_val:-}"
+
+  echo -n "${out_str}"
+}
+
+# -------------------------------------------------------
+# getInpTimeStamp()
+# Usage:      getInpTimeStamp "date string"
+# Parameters: date, accepted date string formats:
+#               YYYY_SEP_MO_SEP_DA HR_SEP_MN_SEP_SC
+#               where _SEP_ can be one of -,/,_,.,:,white space
+# Returns:    NONE
+# Echoes:     NONE
+# -------------------------------------------------------
+getInpTimeStamp()
+{
+  local -i retval=0 jul0=0 thisDA=0
+  local thisDATE
+
+  if [ $# -lt 1 ]; then
+    echo "ERROR:: getInpTimeStamp: Need to define a date."
+    echo "        use: getInpTimeStamp date"
+    echo "        Exiting now ..."
+    echo -n
+    exit 1
+  fi
+
+  unset myYR myMO myDA myHR myMN mySC myJUL
+  unset myYRStr myMOStr myDAStr myHRStr myMNStr mySCStr myDATE
+
+  ref_date="${ref_date:-1900/12/31 00:00:00}"
+  thisDATE="`echo "${1}" | sed 's/[-/_.:]/ /g'`"
+
+    myYR="`echo "${thisDATE}" | awk '{printf $1}' | sed 's/^[0]*//'`"
+  export myYR="$(( ${myYR:--1} + 0 ))"
+    myMO="`echo "${thisDATE}" | awk '{printf $2}' | sed 's/^[0]*//'`"
+  export myMO="$(( ${myMO:--1} + 0 ))"
+    myDA="`echo "${thisDATE}" | awk '{printf $3}' | sed 's/^[0]*//'`"
+  export myDA="$(( ${myDA:--1} + 0 ))"
+
+  # Currently only support HH:MM:SS = 00:00:00
+    myHR="`echo "${thisDATE}" | awk '{printf $4}' | sed 's/^[0]*//'`"
+  export myHR="$(( ${myHR:-0} + 0 ))"
+     myMN="`echo "${thisDATE}" | awk '{printf $5}' | sed 's/^[0]*//'`"
+  export myMN="$(( ${myMN:-0} + 0 ))"
+  #   mySC="`echo "${thisDATE}" | awk '{printf $6}'`"
+  export mySC="$(( ${mySC:-0} + 0 ))"
+  
+  if [ ${myYR} -lt 1900 -o ${myYR} -gt 2050 ]; then
+    echo "ERROR:: getInpTimeStamp: Wrong year supplied."
+    echo "        year: 1900 <= YYYY <= 2050"
+    echo "        Exiting now ..."
+    echo -n
+    exit 1
+  fi
+
+  if [ ${myMO} -lt 1 -o ${myMO} -gt 12 ]; then
+    echo "ERROR:: getInpTimeStamp: Wrong month supplied."
+    echo "        month: 1 <= MO <= 12"
+    echo "        Exiting now ..."
+    echo -n
+    exit 1
+  fi
+
+  if [ ${myDA} -lt 1 -o ${myDA} -gt 31 ]; then
+    echo "ERROR:: getInpTimeStamp: Wrong day supplied."
+    echo "        day: 1 <= DA <= 31"
+    echo "        Exiting now ..."
+    echo -n
+    exit 1
+  else
+    thisDA="`getMonthDays ${myYR} ${myMO}`"
+    if [ ${thisDA} -lt ${myDA} ]; then
+      echo "ERROR:: getInpTimeStamp: Wrong day = ${myDA} supplied for:"
+      echo "        year = ${myYR}, month = ${myMO}."
+      echo "        It should be: 1 <= DA <= ${thisDA}"
+      echo "        Exiting now ..."
+      echo -n
+      exit 1
+    fi
+  fi
+
+  if [ ${myHR} -lt 0 -o ${myHR} -gt 23 ]; then
+    echo "ERROR:: getInpTimeStamp: Wrong hour supplied."
+    echo "        hour: 0 <= HR <= 23"
+    echo "        Exiting now ..."
+    echo -n
+    exit 1
+  fi
+
+  if [ ${myMN} -lt 0 -o ${myMN} -gt 59 ]; then
+    echo "ERROR:: getInpTimeStamp: Wrong minute supplied."
+    echo "        minute: 0 <= MN <= 59"
+    echo "        Exiting now ..."
+    echo -n
+    exit 1
+  fi
+
+  if [ ${mySC} -lt 0 -o ${mySC} -gt 59 ]; then
+    echo "ERROR:: getInpTimeStamp: Wrong second supplied."
+    echo "        second: 0 <= SC <= 59"
+    echo "        Exiting now ..."
+    echo -n
+    exit 1
+  fi
+
+  export myYRStr="`getYearString ${myYR}`"
+  export myMOStr="`get2DString ${myMO}`"
+  export myDAStr="`get2DString ${myDA}`"
+  export myHRStr="`get2DString ${myHR}`"
+  export myMNStr="`get2DString ${myMN}`"
+  export mySCStr="`get2DString ${mySC}`"
+
+  myDATE="${myYRStr}-${myMOStr}-${myDAStr} ${myHRStr}:${myMNStr}:${mySCStr}"
+    jul0="`date -d "${ref_date}" "+%s"`"
+    myJUL="`date -d "${myDATE}" "+%s"`"
+    myJUL=$(( ${myJUL} - ${jul0} ))
+  export myDATE="${myYRStr}-${myMOStr}-${myDAStr}_${myHRStr}:${myMNStr}:${mySCStr}"
+}
+
+getStartEndTimes()
+{
+  unset SimBegYR SimBegMO SimBegDA SimBegHR SimBegMN SimBegSC SimBegJUL
+  unset SimBegDATE SimBegYRStr SimBegMOStr SimBegDAStr
+  unset SimBegHRStr SimBegMNStr SimBegSCStr
+  unset SimEndYR SimEndMO SimEndDA SimEndHR SimEndMN SimEndSC SimEndJUL
+  unset SimEndDATE SimEndYRStr SimEndMOStr SimEndDAStr
+  unset SimEndHRStr SimEndMNStr SimEndSCStr
+
+  if [ -z "${SimBeg:-}" -o -z "${SimEnd:-}" ]; then
+    echo "ERROR:: getStartEndTimes: Both START and END dates need to be supplied."
+    echo "        Start Date: SimBeg = ${SimBeg:-UNDEF}"
+    echo "        End Date  : SimEnd = ${SimEnd:-UNDEF}"
+    echo "        Exiting now ..."
+    echo -n
+    exit 1
+  fi
+
+  getInpTimeStamp "${SimBeg}"
+    export SimBegYR=${myYR}
+    export SimBegMO=${myMO}
+    export SimBegDA=${myDA}
+    export SimBegHR=${myHR}
+    export SimBegMN=${myMN}
+    export SimBegSC=${mySC}
+    export SimBegJUL=${myJUL}
+    export SimBegYRStr="${myYRStr}"
+    export SimBegMOStr="${myMOStr}"
+    export SimBegDAStr="${myDAStr}"
+    export SimBegHRStr="${myHRStr}"
+    export SimBegMNStr="${myMNStr}"
+    export SimBegSCStr="${mySCStr}"
+    export SimBegDATE="${myDATE}"
+    unset myYR myMO myDA myHR myMN mySC myJUL
+    unset myDATE myYRStr myMOStr myDAStr myHRStr myMNStr mySCStr
+
+  getInpTimeStamp "${SimEnd}"
+    export SimEndYR=${myYR}
+    export SimEndMO=${myMO}
+    export SimEndDA=${myDA}
+    export SimEndHR=${myHR}
+    export SimEndMN=${myMN}
+    export SimEndSC=${mySC}
+    export SimEndJUL=${myJUL}
+    export SimEndYRStr="${myYRStr}"
+    export SimEndMOStr="${myMOStr}"
+    export SimEndDAStr="${myDAStr}"
+    export SimEndHRStr="${myHRStr}"
+    export SimEndMNStr="${myMNStr}"
+    export SimEndSCStr="${mySCStr}"
+    export SimEndDATE="${myDATE}"
+    unset myYR myMO myDA myHR myMN mySC myJUL
+    unset myDATE myYRStr myMOStr myDAStr myHRStr myMNStr mySCStr
+
+  if [ ${SimEndJUL} -lt ${SimBegJUL} ]; then
+    echo "ERROR:: getStartEndTimes: Wrong START and END dates were supplied."
+    echo "        Start Date: ${SimBegDATE}"
+    echo "        End Date  : ${SimEndDATE}"
+    echo "        It should be: End Date > Start Date"
+    echo "        Exiting now ..."
+    echo -n
+    exit 1
+  fi
+}

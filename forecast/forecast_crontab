@@ -1,0 +1,10 @@
+# This file initiates the GoM-CRMS forecasts
+# Runs daily at 05:00 am local time
+# Panagiotis Velissariou (pvelissariou@fsu.edu)
+
+HOME=/usr/people/takis
+SHELL=/bin/bash
+PATH="$PATH:."
+MAILTO="pvelissariou@fsu.edu"
+
+00 05 * * * source $HOME/.bash_profile; cd /mars/takis/FORECAST; forecast

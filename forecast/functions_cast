@@ -1,0 +1,2009 @@
+# Author:  Panagiotis Velissariou <pvelissariou@fsu.edu>
+#                                 <velissariou.1@osu.edu>
+# Version: 1.1
+#
+# Version - 1.1 Thu Jul 17 2014
+# Version - 1.0 Sun Feb 23 2014
+
+
+#------------------------------------------------------------
+# SOURCE THE UTILITY FUNCTIONS
+if [ -f functions_common ]; then
+  source functions_common
+else
+  echo " ### ERROR:: in functions_cast"
+  echo "     Cannot locate the file: functions_common"
+  echo "     Exiting now ..."
+  echo
+  exit 1
+fi
+
+# SOURCE THE ENVIRONMENT FILE
+if [ -f cast_env ]; then
+  source cast_env
+else
+  echo " ### ERROR:: in functions_cast"
+  echo "     Cannot locate the file: cast_env"
+  echo "     Exiting now ..."
+  echo
+  exit 1
+fi
+#------------------------------------------------------------
+
+
+# -------------------------------------------------------
+# ParseArgsCast()
+# Usage:      ParseArgsCast args
+# Parameters: args = the script options
+# Returns:    0
+# Echoes:     NONE
+#
+# Gets the supplied options to the script.
+# -------------------------------------------------------
+ParseArgsCast()
+{
+  local opt_opt opt_arg
+
+  local my_SIMBEG my_SIMEND my_DOMS
+  local my_NOINI my_NOBRY my_REMOVE my_USE_PARALLEL
+  local my_DOM_OCN my_DOM_WRF my_DOM_SWAN my_DOM_SED
+  
+  local -i icnt intN
+
+  my_SIMBEG=
+  my_SIMEND=
+  my_DOMS=
+  my_DOM_OCN=0
+  my_DOM_WRF=0
+  my_DOM_SWAN=0
+  my_DOM_SED=0
+  my_NOINI=0
+  my_NOBRY=0
+  my_REMOVE=0
+  my_USE_PARALLEL=0
+
+  while test $# -gt 0; do
+    case "${1}" in
+      --*=*)
+        opt_opt="`toLOWER "\`echo "${1}" | sed 's/=.*//'\`"`"
+        opt_arg="`echo "${1}" | sed 's/.*=//'`"
+        ;;
+      *)
+        opt_opt="`toLOWER "${1}"`"
+        opt_arg="${opt_opt}"
+        ;;
+    esac
+
+    case "${opt_opt}" in
+      --start)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_SIMBEG="${opt_arg}"
+          fi
+        ;;
+      --end)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_SIMEND="${opt_arg}"
+          fi
+        ;;
+      --doms)
+          if [ "X${opt_arg}" != "X" ]; then
+            my_DOMS="${opt_arg}"
+          fi
+        ;;
+      --no-ini)
+          my_NOINI=1
+          #if [ "X${opt_arg}" != "X" ]; then
+          #  my_NOINI="${opt_arg}"
+          #fi
+        ;;
+      --no-bry)
+          my_NOBRY=1
+          #if [ "X${opt_arg}" != "X" ]; then
+          #  my_NOBRY="${opt_arg}"
+          #fi
+        ;;
+      --rmdir)
+          my_REMOVE=1
+          #if [ "X${opt_arg}" != "X" ]; then
+          #  my_REMOVE="${opt_arg}"
+          #fi
+        ;;
+      --par)
+          my_USE_PARALLEL=1
+          #if [ "X${opt_arg}" != "X" ]; then
+          #  my_USE_PARALLEL="${opt_arg}"
+          #fi
+        ;;
+      *) ;; # DEFAULT
+    esac
+    shift
+  done
+
+  ##### The begin of the simulation date
+  if [ -n "${my_SIMBEG:+1}" ]; then
+    my_SIMBEG=$( getDate --date="${my_SIMBEG}" --fmt='+%F %T' )
+    [ $? -ne 0 ] && my_SIMBEG=
+  fi
+
+  ##### The end of the simulation date
+  if [ -n "${my_SIMEND:+1}" ]; then
+    my_SIMEND=$( getDate --date="${my_SIMEND}" --fmt='+%F %T' )
+    [ $? -ne 0 ] && my_SIMEND=
+  fi
+
+  ##### The model domains
+  if [ -n "${my_DOMS:+1}" ]; then
+    my_DOMS=( ${my_DOMS} )
+    for ((icnt = 0; icnt < ${#my_DOMS[@]}; icnt++))
+    do
+      intN=$( getPosInteger "${my_DOMS[${icnt}]}" )
+      intN=${intN:--1}
+      case "${icnt}" in
+        0) my_DOM_OCN=${intN} ;;
+        1) my_DOM_WRF=${intN}  ;;
+        2) my_DOM_SWAN=${intN} ;;
+        3) my_DOM_SED=${intN}  ;;
+        *) ;;
+      esac
+    done
+  fi
+
+  ##### The NOINI flag
+  if [ -n "${my_NOINI:+1}" ]; then
+    my_NOINI=$( getPosInteger "${my_NOINI}" )
+    my_NOINI=${my_NOINI:-0}
+  fi
+
+  ##### The NOBRY flag
+  if [ -n "${my_NOBRY:+1}" ]; then
+    my_NOBRY=$( getPosInteger "${my_NOBRY}" )
+    my_NOBRY=${my_NOBRY:-0}
+  fi
+
+  ##### The remove directory flag
+  if [ -n "${my_REMOVE:+1}" ]; then
+    my_REMOVE=$( getPosInteger "${my_REMOVE}" )
+    my_REMOVE=${my_REMOVE:-0}
+  fi
+
+  ##### GNU parallel flag
+  if [ -n "${my_USE_PARALLEL:+1}" ]; then
+    my_USE_PARALLEL=$( getPosInteger "${my_USE_PARALLEL}" )
+    my_USE_PARALLEL=${my_USE_PARALLEL:-0}
+  fi
+
+  ##### Export all the variables
+  export SimBeg="${my_SIMBEG}"
+  export SimEnd="${my_SIMEND}"
+
+  export DOM_OCN=${my_DOM_OCN}
+  export DOM_WRF=${my_DOM_WRF}
+  export DOM_SWAN=${my_DOM_SWAN}
+  export DOM_SED=${my_DOM_SED}
+
+  export NO_INI=${my_NOINI}
+  export NO_BRY=${my_NOBRY}
+  export REMOVE_DIR=${my_REMOVE}
+  export USE_PARALLEL=${my_USE_PARALLEL}
+
+  return 0
+}
+
+############################################################
+GetPlotDirs()
+{
+  local plotDIRS=
+
+  pushd ${PlotDir} >/dev/null
+    [ ${DOM_OCN} -gt 0 -o ${DOM_OCN} -lt 0 ] && \
+        plotDIRS="${plotDIRS} $(find . -mindepth 1 -maxdepth 1 -type d -iname "ocn*" -exec basename {} \;)"
+    [ ${DOM_WRF} -gt 0 -o ${DOM_WRF} -lt 0 ] && \
+      plotDIRS="${plotDIRS} $(find . -mindepth 1 -maxdepth 1 -type d -iname "atm*" -exec basename {} \;)"
+    [ ${DOM_SWAN} -gt 0 -o ${DOM_SWAN} -lt 0 ] && \
+      plotDIRS="${plotDIRS} $(find . -mindepth 1 -maxdepth 1 -type d -iname "wav*" -exec basename {} \;)"
+    [ ${DOM_SED} -gt 0 -o ${DOM_SED} -lt 0 ] && \
+      plotDIRS="${plotDIRS} $(find . -mindepth 1 -maxdepth 1 -type d -iname "sed*" -exec basename {} \;)"
+  popd >/dev/null
+
+  echo "$( strTrim "${plotDIRS}" 2 )"
+}
+
+
+############################################################
+##### DATE FUNCTIONS
+############################################################
+# -------------------------------------------------------
+# GetMode_Cycle()
+# Usage:      GetMode_Cycle args
+# Parameters: args = the forecast time, one of: [0, 6, 12, 18] or empty
+# Returns:    NONE
+# Echoes:     NONE
+# Exports:    FcastDate
+#
+# Determines the date of the current forecast cycle
+# If it is called with an argument this should be the hour of the forecast
+# If args is not present or undefined this function determines the
+# forecast cycle from the current local time
+# -------------------------------------------------------
+GetMode_Cycle()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  # Date in the loacal TIMEZONE
+  local loc_DATE="$( date '+%F %T' )"
+
+  local date_str="%F %H:00:00"
+  local cur_f_cycle f_cycle f_cycle_all="0 6 12 18"
+  local itime f_hr f_diff
+  local fDIFF fTIMES
+
+  local pdays=5 ndays=5 max_pdays=30 max_ndays=10
+
+  local curYR curMO curDA curHR curMN curSC
+  local cur_DATE beg_DATE end_DATE
+  local cur_MODE="forecast"
+
+  unset FcastDate HcastDate NcastDate LocDate BegDate EndDate
+  unset MODE MODE_PFX MODE_STR
+
+  export LocDate="${loc_DATE}"
+
+  while test $# -gt 0; do
+    case "${1}" in
+      --*=*)
+        opt_opt="`toLOWER "\`echo "${1}" | sed 's/=.*//'\`"`"
+        opt_arg="`echo "${1}" | sed 's/.*=//'`"
+        ;;
+      *)
+        opt_opt="`toLOWER "${1}"`"
+        opt_arg="${opt_opt}"
+        ;;
+    esac
+
+    case "${opt_opt}" in
+      --date)
+          if [ "X${opt_arg}" != "X" ]; then
+            cur_DATE="$( GetStamp_Date "${opt_arg}" | sed 's/_/ /g' )"
+            cur_DATE="$( getDate --date="${cur_DATE}" --fmt="+${date_str}" )"
+            if [ $? -ne 0 ]; then
+              procError "invalid date supplied: DATE = ${opt_arg}"
+            fi
+          fi
+        ;;
+      --hdate1)
+          if [ "X${opt_arg}" != "X" ]; then
+            beg_DATE="$( GetStamp_Date "${opt_arg}" | sed 's/_/ /g' )"
+            beg_DATE="$( getDate --date="${beg_DATE}" --fmt="+${date_str}" )"
+            if [ $? -ne 0 ]; then
+              procError "invalid date supplied: DATE = ${opt_arg}"
+            fi
+          fi
+        ;;
+      --hdate2)
+          if [ "X${opt_arg}" != "X" ]; then
+            end_DATE="$( GetStamp_Date "${opt_arg}" | sed 's/_/ /g' )"
+            end_DATE="$( getDate --date="${end_DATE}" --fmt="+${date_str}" )"
+            if [ $? -ne 0 ]; then
+              procError "invalid date supplied: DATE = ${opt_arg}"
+            fi
+          fi
+        ;;
+      --hour)
+          if [ "X${opt_arg}" != "X" ]; then
+            f_cycle="$( getPosInteger "${opt_arg}" )"
+            if [ $? -ne 0 ]; then
+              procError "forecast hour should be >= 0" \
+                        "supplied: CAST_HOUR = ${opt_arg:-UNDEF}"
+            fi
+          fi
+        ;;
+      --pdays)
+          if [ "X${opt_arg}" != "X" ]; then
+            pdays="$( getPosInteger "${opt_arg}" )"
+            if [ "${pdays:--1}" -lt 0 -o "${pdays:--1}" -gt ${max_pdays} ]; then
+              procError "invalid number of pdays: pdays = ${opt_arg}" \
+                        "pdays should be a number between 0 and ${max_pdays}"
+            fi
+          fi
+        ;;
+      --ndays)
+          if [ "X${opt_arg}" != "X" ]; then
+            ndays="$( getPosInteger "${opt_arg}" )"
+            if [ "${ndays:--1}" -lt 0 -o "${ndays:--1}" -gt ${max_ndays} ]; then
+              procError "invalid number of ndays: ndays = ${opt_arg}" \
+                        "ndays should be a number between 0 and ${max_ndays}"
+            fi
+          fi
+        ;;
+      --mode)
+          if [ "X${opt_arg}" != "X" ]; then
+            case "${opt_arg}" in
+              f|fore|fcast|forecast) cur_MODE="forecast" ;;
+              h|hind|hcast|hindcast) cur_MODE="hindcast" ;;
+                n|now|ncast|nowcast) cur_MODE="nowcast"  ;;
+                                  *) cur_MODE="forecast" ;; # DEFAULT
+            esac
+          fi
+        ;;
+      *) ;; # DEFAULT
+    esac
+    shift
+  done
+
+
+  case "${cur_MODE}" in
+    forecast|nowcast)
+        # Get the current local time as: YYYY-MM-DD HH:00:00
+        if [ -z "${cur_DATE}" ]; then
+          # Convert the local computer time to UTC
+          cur_DATE="$( date -u -d "`date -d "${loc_DATE}"`" "+${date_str}" )"
+          cur_DATE="`echo "${cur_DATE}" | sed 's/[-/ .:]/ /g'`"
+          cur_f_cycle="$( getPosInteger "`echo "${cur_DATE}" | awk '{printf $4}'`" )"
+          if [ -z "${f_cycle}" ]; then
+            f_cycle="${cur_f_cycle}"
+          else
+            [ ${f_cycle} -gt ${cur_f_cycle} ] && f_cycle="${cur_f_cycle}"
+          fi
+        else
+          # The date here is assumed to be in UTC
+          cur_DATE="`echo "${cur_DATE}" | sed 's/[-/ .:]/ /g'`"
+          cur_f_cycle="$( getPosInteger "`echo "${cur_DATE}" | awk '{printf $4}'`" )"
+          f_cycle="${cur_f_cycle}"
+        fi
+
+        # Get the nearest previous forecast/nowcast hour from the current f_cycle
+        for itime in ${f_cycle_all}
+        do
+          f_diff="$( getPosInteger $(( ${f_cycle} - ${itime} )) )"
+          if [ $? -eq 0 ]; then
+            if [ ${f_diff} -eq 0 ]; then
+              f_hr=${itime}
+              fDIFF=
+              fTIMES=
+              break
+            else
+              fDIFF="${fDIFF} ${f_diff}"
+              fTIMES="${fTIMES} ${itime}"
+            fi
+          fi
+        done
+
+        if [ -z "${f_hr:-}" ]; then
+          fDIFF=( ${fDIFF} )
+          fTIMES=( ${fTIMES} )
+
+          minVAL=$( min "${fDIFF[@]}" )
+          for ((icnt = 0; icnt < ${#fDIFF[@]}; icnt++))
+          do
+            if [ ${fDIFF[icnt]} -eq ${minVAL} ]; then
+              f_hr=${fTIMES[icnt]}
+              break
+            fi
+          done
+        fi
+
+        if [ "X${f_hr}" = "X" ]; then
+          procError "could not determine a suitable forecast time" \
+                    "got: CAST_TIME = ${f_hr:-UNDEF}"
+        fi
+
+        curYR="`echo "${cur_DATE}" | awk '{printf $1}'`"
+        curMO="`echo "${cur_DATE}" | awk '{printf $2}'`"
+        curDA="`echo "${cur_DATE}" | awk '{printf $3}'`"
+        curHR="`echo "${cur_DATE}" | awk '{printf $4}'`"
+        curMN="`echo "${cur_DATE}" | awk '{printf $5}'`"
+        curSC="`echo "${cur_DATE}" | awk '{printf $6}'`"
+
+        cur_DATE="${curYR}-${curMO}-${curDA} ${f_hr}:00:00"
+        cur_DATE=$( getDate --date="${cur_DATE}" --fmt="+${date_str}" )
+
+        #---------- BEG:: forecast mode
+        if [ "${cur_MODE}" = "forecast" ]; then
+          # Get the start and end dates as: YYYY-MM-DD HH:MN:00
+          beg_DATE="`getDate --date="${cur_DATE}" --fmt='+%F'` -${pdays} days"
+          beg_DATE="$( getDate --date="${beg_DATE}" --fmt='+%F 00:00:00' )"
+
+          [ `getPosInteger "${curHR}"` -gt 0 ] && ndays=$(( ${ndays} + 1 ))
+          end_DATE="`getDate --date="${cur_DATE}" --fmt='+%F'` ${ndays} days"
+          end_DATE="$( getDate --date="${end_DATE}" --fmt='+%F 00:00:00' )"
+
+          export BegDate="${beg_DATE}"
+          export EndDate="${end_DATE}"
+          export FcastDate="${cur_DATE}"
+          export MODE="forecast"
+          export MODE_PFX="${MODE}-"
+          export MODE_STR="${MODE_PFX}$( GetStamp_Cycle "${FcastDate}" )"
+        fi
+        #---------- END:: forecast mode
+
+        #---------- BEG:: nowcast mode
+        if [ "${cur_MODE}" = "nowcast" ]; then
+          # Get the start and end dates as: YYYY-MM-DD HH:00:00
+          beg_DATE="${cur_DATE}"
+          end_DATE="${cur_DATE}"
+
+          export BegDate="${beg_DATE}"
+          export EndDate="${end_DATE}"
+          export NcastDate="${cur_DATE}"
+          export MODE="nowcast"
+          export MODE_PFX="${MODE}-"
+          export MODE_STR="${MODE_PFX}$( GetStamp_Cycle "${NcastDate}" )"
+        fi
+        #---------- END:: nowcast mode
+      ;;
+    hindcast)
+        if [ -z "${beg_DATE}" -o -z "${end_DATE}" ]; then
+          procError "in hindcast mode both the begDate and the endDate of the simulation need to be specified" \
+                    "usage: ${nm_func} --mode=hcast --hdate1=\"DATE1\" --hdate2=\"DATE2\"" \
+                    "got: BEGIN_DATE = ${beg_DATE:-UNDEF}" \
+                    "     END_DATE   = ${end_DATE:-UNDEF}"
+        fi
+        export BegDate="${beg_DATE}"
+        export EndDate="${end_DATE}"
+        export HcastDate="${BegDate}"
+        export MODE="hindcast"
+        export MODE_PFX="${MODE}-"
+        export MODE_STR="${MODE_PFX}$( GetStamp_Cycle "${HcastDate}" )"
+      ;;
+           *) ;; # DEFAULT
+  esac
+}
+
+GetFcastDates()
+{
+  local b_date e_date f_date
+
+  b_date=$( getDate --date="${SimBeg}" --fmt='+%s' )
+  e_date=$( getDate --date="${SimEnd}" --fmt='+%s' )
+
+  if [ ${e_date} -lt ${b_date} ]; then
+    procError "wrong end date for the simulation" \
+              "SimBeg = ${SimBeg}" \
+              "SimEnd = ${SimEnd}"
+  fi
+
+  b_date=$( getDate --date="${SimBeg}" --fmt='+%F' )
+  e_date=$( getDate --date="${SimEnd}" --fmt='+%F' )
+
+  dates_fcast=
+  dates_stamp=
+  for ((iday = 0; iday < 366; iday++))
+  do
+    f_date="`getDate --date="${b_date}" --fmt='+%F'` ${iday} days"
+    f_date=$( getDate --date="${f_date}" --fmt='+%F' )
+    dates_fcast="${dates_fcast} ${f_date}"
+    dates_stamp="${dates_stamp} $( echo "${f_date}" | sed -e 's/[-_: \t]//g' )"
+    [ "${f_date}" = "${e_date}" ] && break
+  done
+
+  export dates_fcast="$( strTrim "${dates_fcast}" 2 )"
+  export dates_stamp="$( strTrim "${dates_stamp}" 2 )"
+}
+############################################################
+
+
+############################################################
+##### IDL FILE CREATION
+############################################################
+# -------------------------------------------------------
+# Create_IDLFiles()
+# Usage:      Create_IDLFiles file_name  [FileSuffix, [BATCH STATUS]]
+# Returns:    NONE
+# Echoes:     NONE
+#
+# Create file_name" from file_name-tmpl" and the corresponding
+# batch/log and status files.
+# -------------------------------------------------------
+Create_IDLFiles()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local file dir_name file_name file_sfx file_tmpl
+  local file_batch file_log file_status
+  local opt_opt opt_arg
+  local -i do_batch=0 do_status=0
+
+  if [ $# -lt 1 ]; then
+    procError "wrong number of arguments" \
+              "usage: ${nm_func} FileName [FileSuffix, [BATCH STATUS]]"
+  fi
+
+  file=$( echo "${1}" | sed -e 's/[ \t]//g' )
+  dir_name="`dirname ${file}`"
+  [ "X${dir_name}" = "X." ] && dir_name=
+  file_name="${dir_name:+${dir_name}/}`basename ${file} ".idl"`"
+  file_tmpl=${file}-tmpl
+
+  if [ -f ${file_tmpl} ]; then
+    [ -f ${file} ] && rm -f ${file}
+    cp ${file_tmpl} ${file}
+  else
+    procError "${file_tmpl} not found"
+  fi
+
+  while test $# -gt 1; do
+    case "${2}" in
+      --*=*)
+        opt_opt="`toLOWER "\`echo "${2}" | sed 's/=.*//'\`"`"
+        opt_arg="`echo "${2}" | sed 's/.*=//'`"
+        ;;
+      *)
+        opt_opt="`toLOWER "${2}"`"
+        opt_arg="${opt_opt}"
+        ;;
+    esac
+
+    case "${opt_opt}" in
+      --sufx)
+          opt_arg=$( echo "${opt_arg}" | sed -e 's/[ \t]//g' )
+          if [ "X${opt_arg}" != "X" ]; then
+            file_sfx="${opt_arg}"
+          fi
+        ;;
+      batch) do_batch=1  ;;
+          *)
+          opt_arg=$( echo "${opt_arg}" | sed -e 's/[ \t]//g' )
+          if [ "X${opt_arg}" != "X" ]; then
+            file_status="${opt_arg}"
+          fi
+        ;;
+    esac
+    shift
+  done
+
+  if [ ${do_batch} -gt 0 ]; then
+    file_batch="batch-${file_name}${file_sfx:+-${file_sfx}}.idl"
+    file_log="batch-${file_name}${file_sfx:+-${file_sfx}}.log"
+
+    [ -f ${file_batch} ] && rm -f ${file_batch}
+    [ -f ${file_log} ] && rm -f ${file_log}
+    echo ".rnew ${file}" >> ${file_batch}
+    echo "exit"          >> ${file_batch}
+    echo                 >> ${file_batch}
+
+    export BATCH_FILE=${file_batch}
+    export BATCH_LOG=${file_log}
+  fi
+
+#  if [ "X${file_status}" != "X" ]; then
+#    STATUS_FILE=".${file_status}${file_sfx:+-${file_sfx}}.pid"
+#  fi
+}
+
+IdlFilesIni()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local reqMODEL model modelDOM
+  local baseFILE tmplFILE
+  local ifile tmp_tmpl idl_file
+  local ida date0 date1
+  local first_day last_day
+  local date_str dom_str
+
+  # ----- Get all the arguments
+  if [ $# -lt 1 ]; then
+    procError "usage: ${nm_func} model" \
+              "where model is one of: [wrf, roms, swan, sed]"
+  fi
+
+  if [ "X${IdlDir}" = "X" ]; then
+    procError "IdlDir is not defined" \
+              "IdlDir = ${IdlDir:-UNDEF}" \
+              "this is the directory where all model idl files are stored"
+  fi
+
+  reqMODEL="`toUPPER "${1}"`"
+  listBATCH=
+  listIDL=
+  modelDOM=$( getPosInteger "${2}" )
+  modelDOM=${modelDOM:-0}
+
+  if [ ${modelDOM} -lt 1 ]; then
+    procWarn "skipping this model because domain is less than 1" \
+             "model    = ${reqMODEL:-UNDEF}" \
+             "modelDOM = ${modelDOM:-UNDEF}"
+  fi
+
+  case "${reqMODEL}" in
+    WRF)
+      model="wrf"
+      procError "${model} is not a valid option"
+      ;;
+    ROMS)
+      model="roms"
+      ;;
+    SWAN)
+      model="swan"
+      procError "${model} model functionality is not implemented yet"
+      ;;
+    SED)
+      model="sed"
+      procError "${model} model functionality is not implemented yet"
+      ;;
+    *)
+      procError "usage: ${nm_func} model" \
+                "where model is one of: [wrf, roms, swan, sed]" \
+                "supplied model was: ${1:-UNDEF}"
+      ;;
+  esac
+
+  # ----- Prepare the idl files
+  pushd ${IdlDir} >/dev/null
+    dom_str="_d$( get2DString ${modelDOM} )"
+
+    baseFILE="make-initB${model:+-${model}}"
+    tmplFILE="${baseFILE}.idl-tmpl"
+    listBATCH="${baseFILE}${dom_str}-batch.list"
+    listIDL="${baseFILE}${dom_str}-idl.list"
+
+    if [ ! -f "${tmplFILE}" ]; then
+      procError "the idl file: ${tmplFILE} is missing"
+    fi
+
+    # Remove any previous generated files
+    for ifile in ${listBATCH} ${listIDL}
+    do
+      if [ -f "${ifile}" ]; then
+        rm -f $(cat "${ifile}")
+        rm -f "${ifile}"
+      fi
+    done
+
+    date_str="%F %H:00:00"
+    date0="$( getDate --date="${SimBeg}" --fmt="+${date_str}" )"
+
+    idl_file="${baseFILE}${dom_str}.idl"
+    tmp_tmpl="${idl_file}-tmpl"
+      [ -f "${tmp_tmpl}" ] && rm -f "${tmp_tmpl}"
+    cp -f "${tmplFILE}" "${tmp_tmpl}"
+
+    Create_IDLFiles ${idl_file} batch
+    echo ${idl_file}   >> ${listIDL}
+    echo ${BATCH_FILE} >> ${listBATCH}
+    unset BATCH_FILE BATCH_LOG
+    rm -f "${tmp_tmpl}"
+
+    ModifyIDLVar ${idl_file} INIT_DATE    "${date0}"
+    ModifyIDLVar ${idl_file} DOM_NUMB     "${modelDOM}"
+    ModifyIDLVar ${idl_file} INP_DIR      "${DataDir}"
+    ModifyIDLVar ${idl_file} OUT_DIR      "${IniDir}"
+    #ModifyIDLVar ${idl_file} CAST_ROOT   "${CAST_ROOT}"
+    #ModifyIDLVar ${idl_file} CAST_BATH   "${CAST_BATH}"
+    #ModifyIDLVar ${idl_file} CAST_PLOTS  "${CAST_PLOTS}"
+    #ModifyIDLVar ${idl_file} CAST_OUT    "${CAST_OUT}"
+    ModifyIDLVar ${idl_file} CAST_ROOT   "${DataDir}"
+    ModifyIDLVar ${idl_file} CAST_BATH   "${DataDir}/bath"
+    ModifyIDLVar ${idl_file} CAST_PLOTS  "${PlotDir}"
+    ModifyIDLVar ${idl_file} CAST_OUT    "${OutDir}"
+    ModifyIDLVar ${idl_file} FCYCLE       "${FcastDate}"
+    ModifyIDLVar ${idl_file} HC_IDXI0     "${GLBHC_I0:--1}"
+    ModifyIDLVar ${idl_file} HC_IDXI1     "${GLBHC_I1:--1}"
+    ModifyIDLVar ${idl_file} HC_IDXJ0     "${GLBHC_J0:--1}"
+    ModifyIDLVar ${idl_file} HC_IDXJ1     "${GLBHC_J1:--1}"
+  popd >/dev/null
+
+  return 0
+}
+
+############################################################
+IdlFilesBry()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local reqMODEL model modelDOM
+  local baseFILE tmplFILE
+  local ifile tmp_tmpl idl_file
+  local ida date0 date1
+  local first_day last_day
+  local date_str dom_str
+  local EXTSimBeg EXTSimEnd
+  local nEXTBEG nEXTEND
+
+  # ----- Get all the arguments
+  if [ $# -lt 1 ]; then
+    procError "usage: ${nm_func} model" \
+              "where model is one of: [wrf, roms, swan, sed]"
+  fi
+
+  if [ "X${IdlDir}" = "X" ]; then
+    procError "IdlDir is not defined" \
+              "IdlDir = ${IdlDir:-UNDEF}" \
+              "this is the directory where all model idl files are stored"
+  fi
+
+  reqMODEL="`toUPPER "${1}"`"
+  listBATCH=
+  listIDL=
+
+    nEXTBEG=$( getPosInteger "${dataEXTBEG:-0}" )
+  nEXTBEG=${nEXTBEG:-0}
+    nEXTEND=$( getPosInteger "${dataEXTEND:-0}" )
+  nEXTEND=${nEXTEND:-0}
+
+    modelDOM=$( getPosInteger "${2}" )
+  modelDOM=${modelDOM:-0}
+
+  if [ ${modelDOM} -lt 1 ]; then
+    procWarn "skipping this model because domain is less than 1" \
+             "model    = ${reqMODEL:-UNDEF}" \
+             "modelDOM = ${modelDOM:-UNDEF}"
+  fi
+
+  case "${reqMODEL}" in
+    WRF)
+      model="wrf"
+      procError "${model} is not a valid option"
+      ;;
+    ROMS)
+      model="roms"
+      ;;
+    SWAN)
+      model="swan"
+      procError "${model} model functionality is not implemented yet"
+      ;;
+    SED)
+      model="sed"
+      procError "${model} model functionality is not implemented yet"
+      ;;
+    *)
+      procError "usage: ${nm_func} model" \
+                "where model is one of: [wrf, roms, swan, sed]" \
+                "supplied model was: ${1:-UNDEF}"
+      ;;
+  esac
+
+  # ----- Prepare the idl files
+  pushd ${IdlDir} >/dev/null
+    dom_str="_d$( get2DString ${modelDOM} )"
+
+    baseFILE="make-climB${model:+-${model}}"
+    tmplFILE="${baseFILE}.idl-tmpl"
+    listBATCH="${baseFILE}${dom_str}-batch.list"
+    listIDL="${baseFILE}${dom_str}-idl.list"
+
+    if [ ! -f "${tmplFILE}" ]; then
+      procError "the idl file: ${tmplFILE} is missing"
+    fi
+
+    # Remove any previous generated files
+    for ifile in ${listBATCH} ${listIDL}
+    do
+      if [ -f "${ifile}" ]; then
+        rm -f $(cat "${ifile}")
+        rm -f "${ifile}"
+      fi
+    done
+
+    ##### Set the date string format and add extra 1-day records
+    date_str="%F %H:00:00"
+      EXTSimBeg="`getDate --date="${SimBeg}"` -${nEXTBEG} days"
+    EXTSimBeg="$( getDate --date="${EXTSimBeg}" --fmt="+${date_str}" )"
+      EXTSimEnd="`getDate --date="${SimEnd}"` ${nEXTEND} days"
+    EXTSimEnd="$( getDate --date="${EXTSimEnd}" --fmt="+${date_str}" )"
+
+    first_day="$( getDate --date="${EXTSimBeg}" --fmt='+%F 00:00:00' )"
+    # Use an extra day for the end of simulation
+    #last_day="$( date -d "`date -d "${SimEnd}"` 1 days" "+%F 00:00:00" )"
+    last_day="$( getDate --date="${EXTSimEnd}" --fmt='+%F 00:00:00' )"
+
+    for ((ida = 0; ida <= 366; ida++))
+    do
+        date0="`getDate --date="${first_day}"` ${ida} days"
+      date0="$( getDate --date="${date0}" --fmt="+${date_str}" )"
+      
+        date1="`getDate --date="${date0}"` 23 hours"
+      date1="$( getDate --date="${date1}" --fmt="+${date_str}" )"
+      #date1="${date0}"
+
+      idaystr=$( get3DString ${ida} )
+
+      idl_file="${baseFILE}${dom_str}_${idaystr}.idl"
+      tmp_tmpl="${idl_file}-tmpl"
+        [ -f "${tmp_tmpl}" ] && rm -f "${tmp_tmpl}"
+      cp -f "${tmplFILE}" "${tmp_tmpl}"
+
+      Create_IDLFiles ${idl_file} batch
+      echo ${idl_file}   >> ${listIDL}
+      echo ${BATCH_FILE} >> ${listBATCH}
+      unset BATCH_FILE BATCH_LOG
+      rm -f "${tmp_tmpl}"
+
+      ModifyIDLVar ${idl_file} BEG_DATE    "${date0}"
+      ModifyIDLVar ${idl_file} END_DATE    "${date1}"
+      ModifyIDLVar ${idl_file} DOM_NUMB    "${modelDOM}"
+      ModifyIDLVar ${idl_file} REC_EXTBEG  "${nEXTBEG}"
+      ModifyIDLVar ${idl_file} REC_EXTEND  "${nEXTEND}"
+      ModifyIDLVar ${idl_file} INP_DIR     "${DataDir}"
+      ModifyIDLVar ${idl_file} OUT_DIR     "${BryDir}"
+      ModifyIDLVar ${idl_file} CAST_ROOT   "${CAST_ROOT}"
+      ModifyIDLVar ${idl_file} CAST_BATH   "${CAST_BATH}"
+      ModifyIDLVar ${idl_file} CAST_PLOTS  "${CAST_PLOTS}"
+      ModifyIDLVar ${idl_file} CAST_OUT    "${CAST_OUT}"
+      ModifyIDLVar ${idl_file} FCYCLE      "${FcastDate}"
+      ModifyIDLVar ${idl_file} HC_IDXI0    "${GLBHC_I0:--1}"
+      ModifyIDLVar ${idl_file} HC_IDXI1    "${GLBHC_I1:--1}"
+      ModifyIDLVar ${idl_file} HC_IDXJ0    "${GLBHC_J0:--1}"
+      ModifyIDLVar ${idl_file} HC_IDXJ1    "${GLBHC_J1:--1}"
+
+      [ "${date0}" = "${last_day}" ] && break
+    done
+  popd >/dev/null
+
+  return 0
+}
+
+############################################################
+IdlFilesGeo()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local reqMODEL model modelDOM
+  local baseFILE tmplFILE
+  local ifile tmp_tmpl idl_file
+  local ida date0 date1
+  local first_day last_day
+  local date_str dom_str
+
+  # ----- Get all the arguments
+  if [ $# -lt 1 ]; then
+    procError "usage: ${nm_func} model" \
+              "where model is one of: [wrf, roms, swan, sed]"
+  fi
+
+  if [ "X${IdlDir}" = "X" ]; then
+    procError "IdlDir is not defined" \
+              "IdlDir = ${IdlDir:-UNDEF}" \
+              "this is the directory where all model idl files are stored"
+  fi
+
+  reqMODEL="`toUPPER "${1}"`"
+  listBATCH=
+  listIDL=
+  modelDOM=$( getPosInteger "${2}" )
+  modelDOM=${modelDOM:-0}
+
+  if [ ${modelDOM} -lt 1 ]; then
+    procWarn "skipping this model because domain is less than 1" \
+             "model    = ${reqMODEL:-UNDEF}" \
+             "modelDOM = ${modelDOM:-UNDEF}"
+    return 0
+  fi
+
+  case "${reqMODEL}" in
+    WRF)
+      model="wrf"
+      ;;
+    ROMS)
+      model="roms"
+      ;;
+    SWAN)
+      model="swan"
+      procWarn "${model} model functionality is not implemented yet"
+      return 0
+      ;;
+    SED)
+      model="sed"
+      procWarn "${model} model functionality is not implemented yet"
+      return 0
+      ;;
+    *)
+      procError "usage: ${nm_func} model" \
+                "where model is one of: [wrf, roms, swan, sed]" \
+                "supplied model was: ${1:-UNDEF}"
+      ;;
+  esac
+
+  # ----- Prepare the idl files
+  pushd ${IdlDir} >/dev/null
+    dom_str="_d$( get2DString ${modelDOM} )"
+
+    baseFILE="make_datafiles-geo${model:+-${model}}"
+    tmplFILE="${baseFILE}.idl-tmpl"
+    listBATCH="${scrNAME}${model:+-${model}}${dom_str}-batch.list"
+    listIDL="${scrNAME}${model:+-${model}}${dom_str}-idl.list"
+
+    if [ ! -f "${tmplFILE}" ]; then
+      procError "the idl file: ${tmplFILE} is missing"
+    fi
+
+    # Remove any previous generated files
+    for ifile in ${listBATCH} ${listIDL}
+    do
+      if [ -f "${ifile}" ]; then
+        rm -f $(cat "${ifile}")
+        rm -f "${ifile}"
+      fi
+    done
+
+    date_str="%F %H:00:00"
+    first_day="$( getDate --date="${SimBeg}" --fmt='+%F 00:00:00' )"
+    # Use an extra day for the end of simulation
+      last_day="`getDate --date="${SimEnd}"` 1 days"
+    last_day="$( getDate --date="${last_day}" --fmt='+%F 00:00:00' )"
+
+    for ((ida = 0; ida <= 366; ida++))
+    do
+        date0="`getDate --date="${first_day}"` ${ida} days"
+      date0="$( getDate --date="${date0}" --fmt="+${date_str}" )"
+      
+        date1="`getDate --date="${date0}"` 23 hours"
+      date1="$( getDate --date="${date1}" --fmt="+${date_str}" )"
+
+      idaystr=$( get3DString ${ida} )
+
+      idl_file="${baseFILE}${dom_str}_${idaystr}.idl"
+      tmp_tmpl="${idl_file}-tmpl"
+        [ -f "${tmp_tmpl}" ] && rm -f "${tmp_tmpl}"
+      cp -f "${tmplFILE}" "${tmp_tmpl}"
+
+      Create_IDLFiles ${idl_file} batch
+      echo ${idl_file}   >> ${listIDL}
+      echo ${BATCH_FILE} >> ${listBATCH}
+      unset BATCH_FILE BATCH_LOG
+      rm -f "${tmp_tmpl}"
+
+      ModifyIDLVar ${idl_file} BEG_DATE    "${date0}"
+      ModifyIDLVar ${idl_file} END_DATE    "${date1}"
+      ModifyIDLVar ${idl_file} DOM_NUMB    "${modelDOM}"
+      ModifyIDLVar ${idl_file} INP_DIR     "${OutDir}"
+      ModifyIDLVar ${idl_file} OUT_DIR     "${OutDir}"
+      ModifyIDLVar ${idl_file} CAST_ROOT   "${CAST_ROOT}"
+      ModifyIDLVar ${idl_file} CAST_BATH   "${CAST_BATH}"
+      ModifyIDLVar ${idl_file} CAST_PLOTS  "${CAST_PLOTS}"
+      ModifyIDLVar ${idl_file} CAST_OUT    "${CAST_OUT}"
+      ModifyIDLVar ${idl_file} FCYCLE      "${FcastDate}"
+
+      [ "${date0}" = "${last_day}" ] && break
+    done
+  popd >/dev/null
+
+  return 0
+}
+
+############################################################
+IdlFilesMaps()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local reqMODEL model plotVARS modelDOM
+  local baseFILE tmplFILE
+  local ifile tmp_tmpl idl_file
+  local iv dom_str
+
+  # ----- Get all the arguments
+  if [ $# -lt 1 ]; then
+    procError "usage: ${nm_func} model" \
+              "where model is one of: [wrf, roms, swan, sed]"
+  fi
+
+  if [ "X${IdlDir}" = "X" ]; then
+    procError "IdlDir is not defined" \
+              "IdlDir = ${IdlDir:-UNDEF}" \
+              "this is the directory where all model idl files are stored"
+  fi
+
+  reqMODEL="`toUPPER "${1}"`"
+  listBATCH=
+  listIDL=
+  modelDOM=$( getPosInteger "${2}" )
+  modelDOM=${modelDOM:-0}
+
+  if [ ${modelDOM} -lt 1 ]; then
+    #procWarn "skipping this model because domain is less than 1" \
+    #         "model    = ${reqMODEL:-UNDEF}" \
+    #         "modelDOM = ${modelDOM:-UNDEF}"
+    return 0
+  fi
+
+  case "${reqMODEL}" in
+    WRF)
+      model="wrf"
+      plotVARS=( wspeed t2 td2 psfc pblh sph2 relh2
+                 cldfra albedo rain crain
+                 swdown glw olr lh hfx )
+      ;;
+    ROMS)
+      model="roms"
+      plotVARS=( ssh_anom sst sss rho speed
+                 swrad lwrad latent sensible )
+      ;;
+    SWAN)
+      model="swan"
+      plotVARS=( )
+      procWarn "${model} model functionality is not implemented yet"
+      export DOM_SWAN=0
+      return 0
+      ;;
+    SED)
+      model="sed"
+      plotVARS=( )
+      procWarn "${model} model functionality is not implemented yet"
+      export DOM_SED=0
+      return 0
+      ;;
+    *)
+      procError "usage: ${nm_func} model" \
+                "where model is one of: [wrf, roms, swan, sed]" \
+                "supplied model was: ${1:-UNDEF}"
+      ;;
+  esac
+
+  # ----- Prepare the idl files
+  pushd ${IdlDir} >/dev/null
+    dom_str="_d$( get2DString ${modelDOM} )"
+
+    baseFILE="make_datamaps-geo${model:+-${model}}"
+    tmplFILE="${baseFILE}.idl-tmpl"
+    listBATCH="${scrNAME}${model:+-${model}}${dom_str}-batch.list"
+    listIDL="${scrNAME}${model:+-${model}}${dom_str}-idl.list"
+
+    if [ ! -f "${tmplFILE}" ]; then
+      procError "the idl file: ${tmplFILE} is missing"
+    fi
+
+    # Remove any previous generated files
+    for ifile in ${listBATCH} ${listIDL}
+    do
+      if [ -f "${ifile}" ]; then
+        rm -f $(cat "${ifile}")
+        rm -f "${ifile}"
+      fi
+    done
+
+    for ((iv = 0; iv < ${#plotVARS[@]}; iv++))
+    do
+      ivstr=$( get3DString ${iv} )
+
+      idl_file="${baseFILE}${dom_str}_${ivstr}.idl"
+      tmp_tmpl="${idl_file}-tmpl"
+        [ -f "${tmp_tmpl}" ] && rm -f "${tmp_tmpl}"
+      cp -f "${tmplFILE}" "${tmp_tmpl}"
+
+      Create_IDLFiles ${idl_file} batch
+      echo ${idl_file}   >> ${listIDL}
+      echo ${BATCH_FILE} >> ${listBATCH}
+      unset BATCH_FILE BATCH_LOG
+      rm -f "${tmp_tmpl}"
+
+      ModifyIDLVar ${idl_file} BEG_DATE     "${SimBeg}"
+      ModifyIDLVar ${idl_file} END_DATE     "${SimEnd}"
+      ModifyIDLVar ${idl_file} DOM_NUMB     "${modelDOM}"
+      ModifyIDLVar ${idl_file} CONV_PROG    "${CONVERT}"
+      ModifyIDLVar ${idl_file} PARA_PROG    "${GPARAL}"
+      if [ ${CONV_PLOTS_HERE} -gt 0 ]; then
+        ModifyIDLVar ${idl_file} CONV_PLOTS 0
+        ModifyIDLVar ${idl_file} USE_PARALLEL 0
+      else
+        ModifyIDLVar ${idl_file} CONV_PLOTS 1
+        ModifyIDLVar ${idl_file} USE_PARALLEL ${USE_PARALLEL_IN_IDL}
+      fi
+      ModifyIDLVar ${idl_file} INP_DIR     "${OutDir}"
+      ModifyIDLVar ${idl_file} OUT_DIR     "${PlotDir}"
+      ModifyIDLVar ${idl_file} PLOT_VARS   "${plotVARS[${iv}]}"
+      ModifyIDLVar ${idl_file} CAST_ROOT   "${CAST_ROOT}"
+      ModifyIDLVar ${idl_file} CAST_BATH   "${CAST_BATH}"
+      ModifyIDLVar ${idl_file} CAST_PLOTS  "${CAST_PLOTS}"
+      ModifyIDLVar ${idl_file} CAST_OUT    "${CAST_OUT}"
+      ModifyIDLVar ${idl_file} FCYCLE      "${FcastDate}"
+    done
+  popd >/dev/null
+
+  return 0
+}
+
+
+############################################################
+##### SCRIPT CREATION
+############################################################
+MakeScript_IdlGeo()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local mySCRIPT
+
+  # ----- Get all the arguments
+  if [ $# -lt 1 ]; then
+    procError "usage: ${nm_func} scriptName" \
+              "where scriptName is the name of the script to be created"
+  fi
+
+  if [ "X${IdlDir}" = "X" ]; then
+    procError "IdlDir is not defined" \
+              "IdlDir = ${IdlDir:-UNDEF}" \
+              "this is the directory where all model idl files are stored"
+  fi
+
+  if [ "X${LogDir}" = "X" ]; then
+    procError "LogDir is not defined" \
+              "LogDir = ${LogDir:-UNDEF}" \
+              "this is the directory where all model log files are stored"
+  fi
+
+  mySCRIPT="${1}"
+  [ -f "${mySCRIPT}" ] && rm -f "${mySCRIPT}"
+
+cat  <<'EOF' >> ${mySCRIPT}
+#!/bin/bash
+
+# Make sure that the current working directory is in the PATH
+[[ ! :$PATH: == *:".":* ]] && export PATH="${PATH}:."
+
+scrNAME="`basename $0 .sh`"
+
+
+#------------------------------------------------------------
+# SOURCE THE UTILITY(COMMON) FUNCTIONS
+if [ -f functions_common ]; then
+  source functions_common
+else
+  echo " ### ERROR:: in ${scrNAME}"
+  echo "     Cannot load the required file: functions_common"
+  echo "     Exiting now ..."
+  echo
+  exit 1
+fi
+#------------------------------------------------------------
+
+
+if [ $# -lt 1 ]; then
+  procError "usage: ${scrNAME} fname" \
+             "where fname is the file that contains the list of the idl batch files"
+else
+  if [ ! -f "${1}" ]; then
+    procError "file ${1} not found"
+  fi
+fi
+
+myINP="${1}"
+EOF
+
+  echo "myPAR_CMD=\"${GPARAL}\""                     >> ${mySCRIPT}
+  echo "myPAR_OPTS_GLB=\"${GPARAL_OPTS_GLB}\""       >> ${mySCRIPT}
+  echo "myPAR_OPTS_SSH=\"${GPARAL_OPTS_SSH}\""       >> ${mySCRIPT}
+  echo "myPAR_OPTS_TIME=\"${GPARAL_OPTS_TIME}\""     >> ${mySCRIPT}
+  echo "myPAR_OPTS_RESUME=\"${GPARAL_OPTS_RESUME}\"" >> ${mySCRIPT}
+  echo "myPAR_NJOBS=\"${MAX_PAR_NJOBS:-4}\""         >> ${mySCRIPT}
+  echo "myLOG_DIR=\"${LogDir:-.}\""                  >> ${mySCRIPT}
+  echo "myWRK_DIR=\"${IdlDir:-.}\""                  >> ${mySCRIPT}
+
+cat  <<'EOF' >> ${mySCRIPT}
+
+myLOG="${myINP%%.*}-status.log"
+myLOG="${myLOG_DIR}/${myLOG}"
+[ -f "${myLOG}" ] && rm -f "${myLOG}"
+
+mySTAT="${myINP%%.*}-run.log"
+mySTAT="${myLOG_DIR}/${mySTAT}"
+[ -f "${mySTAT}" ] && rm -f "${mySTAT}"
+
+myPROC_LOG_DIR="${myLOG_DIR}/1"
+if [ -d ${myPROC_LOG_DIR} ]; then
+  for idir in $(cat ${myINP})
+  do
+    deleteDIR "${myPROC_LOG_DIR}/${idir}"
+  done
+  rmdir "${myPROC_LOG_DIR}" 2>/dev/null
+fi
+
+##### For the parallel program
+if [ -n "${myPAR_CMD:+1}" ]; then
+  myPAR_OPT="${myPAR_OPTS_GLB} --timeout 1200"
+  myPAR_OPT="${myPAR_OPT} --joblog ${myLOG} ${myPAR_OPTS_RESUME}"
+  myPAR_OPT="${myPAR_OPT} --wd ${myWRK_DIR} -j${myPAR_NJOBS}"
+else
+  procError "the parallel program is not defined" \
+             "PARALLEL = ${myPAR_CMD:-UNDEF}"
+fi
+
+pushd ${myWRK_DIR} >/dev/null
+  ${myPAR_CMD} ${myPAR_OPT} \
+    idl -quiet -queue {} ::: $(cat ${myINP}) > ${mySTAT} 2>&1
+  FAILURE_STATUS=$?
+popd >/dev/null
+
+exit ${FAILURE_STATUS}
+EOF
+
+  chmod 0755 ${mySCRIPT}
+
+  return 0
+}
+
+############################################################
+MakeScript_IdlPlots()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local mySCRIPT
+
+  # ----- Get all the arguments
+  if [ $# -lt 1 ]; then
+    procError "usage: ${nm_func} scriptName" \
+              "where scriptName is the name of the script to be created"
+  fi
+
+  if [ "X${IdlDir}" = "X" ]; then
+    procError "IdlDir is not defined" \
+              "IdlDir = ${IdlDir:-UNDEF}" \
+              "this is the directory where all model idl files are stored"
+  fi
+
+  if [ "X${LogDir}" = "X" ]; then
+    procError "LogDir is not defined" \
+              "LogDir = ${LogDir:-UNDEF}" \
+              "this is the directory where all model log files are stored"
+  fi
+
+  mySCRIPT="${1}"
+  [ -f "${mySCRIPT}" ] && rm -f "${mySCRIPT}"
+
+cat  <<'EOF' >> ${mySCRIPT}
+#!/bin/bash
+
+# Make sure that the current working directory is in the PATH
+[[ ! :$PATH: == *:".":* ]] && export PATH="${PATH}:."
+
+scrNAME="`basename $0 .sh`"
+
+
+#------------------------------------------------------------
+# SOURCE THE UTILITY(COMMON) FUNCTIONS
+if [ -f functions_common ]; then
+  source functions_common
+else
+  echo " ### ERROR:: in ${scrNAME}"
+  echo "     Cannot load the required file: functions_common"
+  echo "     Exiting now ..."
+  echo
+  exit 1
+fi
+#------------------------------------------------------------
+
+
+if [ $# -lt 1 ]; then
+  procError "usage: ${scrNAME} fname" \
+             "where fname is the file that contains the list of the idl batch files"
+else
+  if [ ! -f "${1}" ]; then
+    procError "file ${1} not found"
+  fi
+fi
+
+myINP="${1}"
+EOF
+
+  echo "myPAR_CMD=\"${GPARAL}\""                     >> ${mySCRIPT}
+  echo "myPAR_OPTS_GLB=\"${GPARAL_OPTS_GLB}\""       >> ${mySCRIPT}
+  echo "myPAR_OPTS_SSH=\"${GPARAL_OPTS_SSH}\""       >> ${mySCRIPT}
+  echo "myPAR_OPTS_TIME=\"${GPARAL_OPTS_TIME}\""     >> ${mySCRIPT}
+  echo "myPAR_OPTS_RESUME=\"${GPARAL_OPTS_RESUME}\"" >> ${mySCRIPT}
+  echo "myPAR_NJOBS=\"${MAX_PAR_NJOBS:-4}\""         >> ${mySCRIPT}
+  echo "myLOG_DIR=\"${LogDir:-.}\""                  >> ${mySCRIPT}
+  echo "myWRK_DIR=\"${IdlDir:-.}\""                  >> ${mySCRIPT}
+
+cat  <<'EOF' >> ${mySCRIPT}
+
+myLOG="${myINP%%.*}-status.log"
+myLOG="${myLOG_DIR}/${myLOG}"
+[ -f "${myLOG}" ] && rm -f "${myLOG}"
+
+mySTAT="${myINP%%.*}-run.log"
+mySTAT="${myLOG_DIR}/${mySTAT}"
+[ -f "${mySTAT}" ] && rm -f "${mySTAT}"
+
+myPROC_LOG_DIR="${myLOG_DIR}/1"
+if [ -d ${myPROC_LOG_DIR} ]; then
+  for idir in $(cat ${myINP})
+  do
+    deleteDIR "${myPROC_LOG_DIR}/${idir}"
+  done
+  rmdir "${myPROC_LOG_DIR}" 2>/dev/null
+fi
+
+##### For the parallel program
+if [ -n "${myPAR_CMD:+1}" ]; then
+  myPAR_OPT="${myPAR_OPTS_GLB} --timeout 1200"
+  myPAR_OPT="${myPAR_OPT} --joblog ${myLOG} ${myPAR_OPTS_RESUME}"
+  myPAR_OPT="${myPAR_OPT} --wd ${myWRK_DIR} -j${myPAR_NJOBS}"
+else
+  procError "the parallel program is not defined" \
+            "PARALLEL = ${myPAR_CMD:-UNDEF}"
+fi
+
+pushd ${myWRK_DIR} >/dev/null
+  ${myPAR_CMD} ${myPAR_OPT} \
+    idl -quiet -queue {} ::: $(cat ${myINP}) > ${mySTAT} 2>&1
+  FAILURE_STATUS=$?
+popd >/dev/null
+
+exit ${FAILURE_STATUS}
+EOF
+
+  chmod 0755 ${mySCRIPT}
+
+  return 0
+}
+
+############################################################
+MakeScript_Images()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local mySCRIPT
+  
+  # ----- Get all the arguments
+  if [ $# -lt 1 ]; then
+    procError "usage: ${nm_func} scriptName" \
+              "where scriptName is the name of the script to be created"
+  fi
+
+  if [ "X${IdlDir}" = "X" ]; then
+    procError "IdlDir is not defined" \
+              "IdlDir = ${IdlDir:-UNDEF}" \
+              "this is the directory where all model idl files are stored"
+  fi
+
+  if [ "X${LogDir}" = "X" ]; then
+    procError "LogDir is not defined" \
+              "LogDir = ${LogDir:-UNDEF}" \
+              "this is the directory where all model log files are stored"
+  fi
+
+  mySCRIPT="${1}"
+  [ -f "${mySCRIPT}" ] && rm -f "${mySCRIPT}"
+
+cat  <<'EOF' >> ${mySCRIPT}
+#!/bin/bash
+
+# Make sure that the current working directory is in the PATH
+[[ ! :$PATH: == *:".":* ]] && export PATH="${PATH}:."
+
+scrNAME="`basename $0 .sh`"
+
+
+#------------------------------------------------------------
+# SOURCE THE UTILITY(COMMON) FUNCTIONS
+if [ -f functions_common ]; then
+  source functions_common
+else
+  echo " ### ERROR:: in ${scrNAME}"
+  echo "     Cannot load the required file: functions_common"
+  echo "     Exiting now ..."
+  echo
+  exit 1
+fi
+#------------------------------------------------------------
+
+
+if [ $# -lt 1 ]; then
+  procError "usage: ${scrNAME} dirname" \
+            "where dirname is the directory that contains the plots for the variable"
+else
+  if [ ! -d "${1}" ]; then
+    procError "directory ${1} not found"
+  fi
+fi
+
+myINP="${1}"
+EOF
+
+  echo "myPLOT_TYPE=\"${PLOT_TYPE}\""                >> ${mySCRIPT}
+  echo "myIMG_TYPE=\"${IMG_TYPE}\""                  >> ${mySCRIPT}
+  echo "myCONV_CMD=\"${CONVERT}\""                   >> ${mySCRIPT}
+  echo "myCONV_OPT=\"${CONVERT_OPTS}\""              >> ${mySCRIPT}
+  echo "myPAR_CMD=\"${GPARAL}\""                     >> ${mySCRIPT}
+  echo "myPAR_OPTS_GLB=\"${GPARAL_OPTS_GLB}\""       >> ${mySCRIPT}
+  echo "myPAR_OPTS_SSH=\"${GPARAL_OPTS_SSH}\""       >> ${mySCRIPT}
+  echo "myPAR_OPTS_TIME=\"${GPARAL_OPTS_TIME}\""     >> ${mySCRIPT}
+  echo "myPAR_OPTS_RESUME=\"${GPARAL_OPTS_RESUME}\"" >> ${mySCRIPT}
+  echo "myPAR_NJOBS=\"${MAX_PAR_NJOBS:-4}\""         >> ${mySCRIPT}
+  echo "myLOG_DIR=\"${LogDir:-.}\""                  >> ${mySCRIPT}
+  echo "myWRK_DIR=\"${PlotDir:-.}\""                 >> ${mySCRIPT}
+
+cat  <<'EOF' >> ${mySCRIPT}
+
+myLOG="${myINP%%.*}-status.log"
+myLOG="${myLOG_DIR}/${myLOG}"
+[ -f "${myLOG}" ] && rm -f "${myLOG}"
+
+mySTAT="${myINP%%.*}-run.log"
+mySTAT="${myLOG_DIR}/${mySTAT}"
+[ -f "${mySTAT}" ] && rm -f "${mySTAT}"
+
+##### For the convert program (ImageMagick/GraphicsMagick)
+if [ -n "${myCONV_CMD:+1}" ]; then
+  export MAGICK_THREAD_LIMIT=1
+  export OMP_NUM_THREADS=1
+else
+  procError "the convert program is not defined" \
+            "CONVERT = ${myCONV_CMD:-UNDEF}"
+fi
+
+##### For the parallel program
+if [ -n "${myPAR_CMD:+1}" ]; then
+  myPAR_OPT="${myPAR_OPTS_GLB} --timeout 1200"
+  myPAR_OPT="${myPAR_OPT} --joblog ${myLOG} ${myPAR_OPTS_RESUME}"
+  myPAR_OPT="${myPAR_OPT} --wd ${myWRK_DIR} -j${myPAR_NJOBS}"
+else
+  procError "the parallel program is not defined" \
+            "PARALLEL = ${myPAR_CMD:-UNDEF}"
+fi
+
+pushd ${myWRK_DIR} >/dev/null
+  ${myPAR_CMD} ${myPAR_OPT} \
+  ${myCONV_CMD} ${myCONV_OPT} {} {.}.${myIMG_TYPE} ::: \
+     $( find ${myINP} -mindepth 1 -maxdepth 1 -type f -iname "*.${myPLOT_TYPE}" ) \
+     > ${mySTAT} 2>&1
+  FAILURE_STATUS=$?
+popd >/dev/null
+
+exit ${FAILURE_STATUS}
+EOF
+
+  chmod 0755 ${mySCRIPT}
+
+  return 0
+}
+
+############################################################
+MakeScript_ListsGFS()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local b_date e_date f_date
+  local b_jul e_jul f_jul
+  local URL inpFileSFX inpFileEXT outFileEXT
+  local inp_name out_name out_date out_hour
+  local mySCRIPT idat
+  local nDAT nDAToff
+  local myDate adv_date this_date this_hour this_time
+
+  local nDAYS iday iday1
+  local extBEG=1 extEND=1
+  local dayBEG dayEND notFOUND
+
+  # ----- Get all the arguments
+  if [ $# -lt 1 ]; then
+    procError "usage: ${nm_func} scriptName" \
+              "where scriptName is the name of the script to be created"
+  fi
+
+  if [ ! -d "${DataDir}" ]; then
+    procError "DataDir is not defined" \
+              "DataDir = ${DataDir:-UNDEF}" \
+              "this is the directory where all model input data are stored"
+  fi
+
+  if [ "X${ATM_DATA_HOURS}" = "X" ]; then
+    procError "need to define the ATM_DATA_HOURS variable" \
+              "ATM_DATA_HOURS = ${ATM_DATA_HOURS:-UNDEF}" \
+              "this is interval (hours) for the input records"
+  else
+    if [ ${ATM_DATA_HOURS} -ne 3 ] && [ ${ATM_DATA_HOURS} -ne 6 ]; then
+      procError "wrong value for ATM_DATA_HOURS" \
+                "ATM_DATA_HOURS = ${ATM_DATA_HOURS:-UNDEF}" \
+                "correct values are one of [3, 6]"
+    fi
+  fi
+
+  if [ -z "${SimBeg}" -o -z "${SimEnd}" ]; then
+    procError "need to define both SimBeg and SimEnd" \
+              "SimBeg = ${SimBeg:-UNDEF}" \
+              "SimEnd = ${SimEnd:-UNDEF}"
+  fi
+
+  URL="${URL_GFS:-}"
+  if [ "X${URL}" = "X" ]; then
+    procError "need to define the URL_GFS variable" \
+              "URL_GFS = ${URL_GFS:-UNDEF}"
+  fi
+
+  mySCRIPT="${1}"
+  [ -f "${mySCRIPT}" ] && rm -f "${mySCRIPT}"
+
+  ##### Check the forecast dates
+  date_str="%F %H:%M:%S"
+
+  b_date=$( getDate --date="${SimBeg}" --fmt="+${date_str}" )
+  b_jul=$( getDate --date="${b_date}" --fmt='+%s' )
+
+  f_date=$( getDate --date="${FcastDate}" --fmt="+${date_str}" )
+  f_jul=$( getDate --date="${f_date}" --fmt='+%s' )
+
+  e_date=$( getDate --date="${SimEnd}" --fmt="+${date_str}" )
+  e_jul=$( getDate --date="${e_date}" --fmt='+%s' )
+
+  if [ ${e_jul} -lt ${f_jul} -o \
+       ${f_jul} -lt ${b_jul} -o \
+       ${e_jul} -lt ${b_jul} ]; then
+    procError "wrong simulation dates were supplied:" \
+              "SimBeg    = ${SimBeg}" \
+              "FcastDate = ${FcastDate}" \
+              "SimEnd    = ${SimEnd}"
+  fi
+
+  ##### Check the GFS data resolution
+  case $( getInteger ${GFS_DATA_RESOL} ) in
+    # 1.0 degree resolution
+    0) inpFileSFX="pgrb2.1p00.f"
+       inpFileEXT=
+       outFileEXT=".grib2"
+      ;;
+    # 0.5 degree resolution
+    1) inpFileSFX="pgrb2.0p50.f"
+       inpFileEXT=
+       outFileEXT=".grib2"
+      ;;
+    # 0.5 degree resolution
+    1) inpFileSFX="pgrb2.0p25.f"
+       inpFileEXT=
+       outFileEXT=".grib2"
+      ;;
+    # default: none
+    *)
+      procError "wrong data resolution were supplied:" \
+                "GFS_DATA_RESOL = ${GFS_DATA_RESOL:-UNDEF}" \
+                "correct values are one of [0, 1]"
+      ;;
+  esac
+
+  # ----- Prepare the list files
+  inpLIST="data_gfs_inp.list"
+  outLIST="data_gfs_out.list"
+
+  [ -f "${inpLIST}" ] && rm -f "${inpLIST}"
+  [ -f "${outLIST}" ] && rm -f "${outLIST}"
+
+  # ----- (1) Get the hindcast filenames (from SimBeg to FcastDate)
+  # Hindcast days (from SimBeg to FcastDate (not included))
+  nDAYS=$(( (${f_jul} - ${b_jul}) / 86400 ))
+
+  # dayBEG=0 corresponds to SimBeg
+  dayBEG=$(( 0 - ${extBEG} ))
+
+  # dayEND=${nDAYS} corresponds to FcastDate
+  dayEND=${nDAYS}
+
+  nDAT=6
+  for ((iday = ${dayBEG}; iday < ${dayEND}; iday++))
+  do
+      myDate="`getDate --date="${b_date}"` ${iday} days"
+    myDate="$( getDate --date="${myDate}" --fmt="+${date_str}" )"
+    for cycle in ${CAST_CYCLE_ALL}
+    do
+      adv_date="`getDate --date="${myDate}"` ${cycle} hours"
+      this_date="$( getDate --date="${adv_date}" --fmt='+%Y%m%d' )"
+      this_hour="$( getDate --date="${adv_date}" --fmt='+%H' )"
+
+      for (( idat = 0; idat < ${nDAT}; idat=$((${idat} + ${ATM_DATA_HOURS})) ))
+      do
+        #this_time="${idat}"
+        #[ ${idat} -lt 10 ] && this_time="`get2DString ${idat}`"
+        this_time="`get3DString ${idat}`"
+    
+        inp_name="gfs.${this_date}${this_hour}/gfs.t${this_hour}z.${inpFileSFX}${this_time}${inpFileEXT}"
+        out_name="gfs_${this_date}_${this_hour}00_`get3DString ${idat}`${outFileEXT}"
+
+        notFOUND=0
+        if [ ${iday} -lt 0 ]; then
+          wget -q --spider "${URL}/${inp_name}"
+          notFOUND=$?
+        fi
+
+        if [ ${notFOUND} -eq 0 ]; then
+          echo "${URL}/${inp_name}" >> ${inpLIST}
+          echo "${out_name}"        >> ${outLIST}
+        fi
+      done
+    done
+  done
+
+  # ----- (2) Get all the forecast filenames (from FcastDate to SimEnd)
+  # Forecast days (from FcastDate to SimEnd)
+  nDAYS=$(( (${e_jul} - ${f_jul}) / 86400 ))
+
+  # dayBEG=0 corresponds to SimBeg
+  dayBEG=0
+
+  # dayEND=${nDAYS} corresponds to SimEnd
+  dayEND=$(( ${nDAYS} + ${extEND} ))
+
+  this_date="$( getDate --date="${f_date}" --fmt='+%Y%m%d' )"
+  this_hour="$( getDate --date="${f_date}" --fmt='+%H' )"
+
+  nDAT=$(( dayEND * (24 / ATM_DATA_HOURS) ))
+  nDAToff="$(( 18 - $(getPosInteger `getDate --date="${e_date}" --fmt='+%H'`) ))"
+  if [ ${nDAToff} -lt 0 ]; then
+    nDAT="$(( ${nDAT} - ((${nDAToff} + ${ATM_DATA_HOURS} - 1) / ${ATM_DATA_HOURS}) ))"
+  fi
+  nDAT=$(( (nDAT + 1) * ATM_DATA_HOURS ))
+
+  for (( idat = 0; idat < ${nDAT}; idat=$((${idat} + ${ATM_DATA_HOURS})) ))
+  do
+    #this_time="${idat}"
+    #[ ${idat} -lt 10 ] && this_time="`get2DString ${idat}`"
+    this_time="`get3DString ${idat}`"
+
+    inp_name="gfs.${this_date}${this_hour}/gfs.t${this_hour}z.${inpFileSFX}${this_time}${inpFileEXT}"
+
+    # special treatment of the output filenames so run_wps can recognize them
+    adv_date="`getDate --date="${f_date}"` ${idat} hours"
+    out_date="$( getDate --date="${adv_date}" --fmt='+%Y%m%d' )"
+    out_hour="$( getDate --date="${adv_date}" --fmt='+%H' )"
+    out_name="gfs_${out_date}_${out_hour}00_`get3DString ${idat}`${outFileEXT}"
+
+    echo "${URL}/${inp_name}" >> ${inpLIST}
+    echo "${out_name}"        >> ${outLIST}
+  done
+
+cat  <<'EOF' >> ${mySCRIPT}
+#!/bin/bash
+
+# Make sure that the current working directory is in the PATH
+[[ ! :$PATH: == *:".":* ]] && export PATH="${PATH}:."
+
+scrNAME=`basename $0 .sh`
+
+
+#------------------------------------------------------------
+# SOURCE THE UTILITY(COMMON) FUNCTIONS
+if [ -f functions_common ]; then
+  source functions_common
+else
+  echo " ### ERROR:: in ${scrNAME}"
+  echo "     Cannot load the required file: functions_common"
+  echo "     Exiting now ..."
+  echo
+  exit 1
+fi
+#------------------------------------------------------------
+
+
+if [ $# -lt 2 ]; then
+  procError "usage: ${scrNAME} inpLIST outLIST" \
+            "where [inpLIST, outLIST] are the lists that contains the names of the inp/out files"
+else
+  if [ ! -f "${1}" ]; then
+    procError "file \"${1}\" not found"
+  fi
+  if [ ! -f "${2}" ]; then
+    procError "file \"${2}\" not found"
+  fi
+fi
+
+myINP="${1}"
+myOUT="${2}"
+EOF
+
+  echo "myPAR_CMD=\"${GPARAL}\""                     >> ${mySCRIPT}
+  echo "myPAR_OPTS_GLB=\"${GPARAL_OPTS_GLB}\""       >> ${mySCRIPT}
+  echo "myPAR_OPTS_SSH=\"${GPARAL_OPTS_SSH}\""       >> ${mySCRIPT}
+  echo "myPAR_OPTS_TIME=\"${GPARAL_OPTS_TIME}\""     >> ${mySCRIPT}
+  echo "myPAR_OPTS_RESUME=\"${GPARAL_OPTS_RESUME}\"" >> ${mySCRIPT}
+  echo "myLOG_DIR=\"${LogDir:-.}\""                  >> ${mySCRIPT}
+  echo "myWRK_DIR=\"${DataDir:-.}\""                 >> ${mySCRIPT}
+
+cat  <<'EOF' >> ${mySCRIPT}
+
+myLOG="${myLOG_DIR}/${scrNAME%%.*}-status.log"
+[ -f "${myLOG}" ] && rm -f "${myLOG}"
+
+mySTAT="${myLOG_DIR}/${scrNAME%%.*}-run.log"
+[ -f "${mySTAT}" ] && rm -f "${mySTAT}"
+
+##### For the parallel program
+if [ -n "${myPAR_CMD:+1}" ]; then
+  myPAR_OPT="${myPAR_OPTS_GLB} --timeout 1200"
+  myPAR_OPT="${myPAR_OPT} --joblog ${myLOG} ${myPAR_OPTS_RESUME}"
+  myPAR_OPT="${myPAR_OPT} --wd ${myWRK_DIR} -j0"
+else
+  procError "the parallel program is not defined" \
+            "PARALLEL = ${myPAR_CMD:-UNDEF}"
+fi
+
+pushd ${myWRK_DIR} >/dev/null
+  inpFILES=( $(cat ${myINP}) )
+  outFILES=( $(cat ${myOUT}) )
+  if [ ${#inpFILES[@]} -ne ${#outFILES[@]} ]; then
+    procError "input data files are not equal to the outFILES data files" \
+              "INPUT FILES  = ${#inpFILES[@]}" \
+              "OUTPUT FILES = ${#outFILES[@]}"
+  fi
+
+  for idat in ${outFILES[@]}
+  do
+    [ -f ${idat} ] && rm -f ${idat}
+  done
+
+  wget_opts="-c -nv --tries=3"
+  ${myPAR_CMD} ${myPAR_OPT} --xapply \
+    wget ${wget_opts} {1} -O {2} \
+    ::: $(echo ${inpFILES[@]}) \
+    ::: $(echo ${outFILES[@]}) > ${mySTAT} 2>&1
+  PROG_STATUS=$?
+popd >/dev/null
+
+exit ${PROG_STATUS}
+EOF
+
+  chmod 0755 ${mySCRIPT}
+
+  return 0
+}
+
+############################################################
+MakeScript_ListsHYCOM()
+{
+  local nm_func="${FUNCNAME[0]}"
+
+  local b_date e_date f_date
+  local b_jul e_jul f_jul
+  local myDate adv_date out_date this_date this_year
+  local URL inp_name out_name ftype
+  local mySCRIPT idat
+
+  local nDAYS iday iday1
+  local extBEG=1 extEND=1
+  local dayBEG dayEND notFOUND
+
+  # ----- Get all the arguments
+  if [ $# -lt 1 ]; then
+    procError "usage: ${nm_func} scriptName" \
+              "where scriptName is the name of the script to be created"
+  fi
+
+  if [ -z "${SimBeg}" -o -z "${SimEnd}" ]; then
+    procError "need to define both SimBeg and SimEnd" \
+              "SimBeg = ${SimBeg:-UNDEF}" \
+              "SimEnd = ${SimEnd:-UNDEF}"
+  fi
+
+  URL="${URL_HYCOM:-}"
+  if [ -z "${URL}" ]; then
+    procError "need to define the URL_HYCOM variable" \
+              "URL_HYCOM = ${URL_HYCOM:-UNDEF}"
+  fi
+
+  mySCRIPT="${1}"
+  [ -f "${mySCRIPT}" ] && rm -f "${mySCRIPT}"
+
+  ##### Check the forecast dates
+  # Hycom data are only available at 00 UTC
+  date_str="%F 00:00:00"
+
+  b_date=$( getDate --date="${SimBeg}" --fmt="+${date_str}" )
+  b_jul=$( getDate --date="${b_date}" --fmt='+%s' )
+
+  f_date=$( getDate --date="${FcastDate}" --fmt="+${date_str}" )
+  f_jul=$( getDate --date="${f_date}" --fmt='+%s' )
+
+  e_date=$( getDate --date="${SimEnd}" --fmt="+${date_str}" )
+  e_jul=$( getDate --date="${e_date}" --fmt='+%s' )
+
+  if [ ${e_jul} -lt ${f_jul} -o \
+       ${f_jul} -lt ${b_jul} -o \
+       ${e_jul} -lt ${b_jul} ]; then
+    procError "wrong simulation dates were supplied:" \
+              "SimBeg    = ${SimBeg}" \
+              "FcastDate = ${FcastDate}" \
+              "SimEnd    = ${SimEnd}"
+  fi
+
+  # ----- Prepare the list files
+  inpLIST="data_hycom_inp.list"
+  outLIST="data_hycom_out.list"
+
+  [ -f "${inpLIST}" ] && rm -f "${inpLIST}"
+  [ -f "${outLIST}" ] && rm -f "${outLIST}"
+
+  nDAYS=$(( ((${e_jul} - ${b_jul}) / 86400) + 1 ))
+
+  # dayBEG=0 corresponds to SimBeg
+  dayBEG=$(( 0 - ${extBEG} ))
+
+  # dayEND=${nDAYS} corresponds to SimEnd
+  dayEND=$(( ${nDAYS} + ${extEND} ))
+
+  iday1=0
+  for ((iday = ${dayBEG}; iday < ${dayEND}; iday++))
+  do
+    myDate="`getDate --date="${b_date}"` ${iday} days"
+    myDate="$( getDate --date="${myDate}" --fmt="+${date_str}" )"
+    this_year="$( getDate --date="${myDate}" --fmt='+%Y' )"
+    this_date="$( getDate --date="${myDate}" --fmt='+%Y_%j_%H' )"
+    out_date="$( getDate --date="${myDate}" --fmt='+%Y%m%d_%H00' )"
+
+    out_name="hycom_${out_date}.nc"
+    inp_name="${this_year}/2d/archv.${this_date}_2d.nc
+              ${this_year}/salt/archv.${this_date}_3zs.nc
+              ${this_year}/temp/archv.${this_date}_3zt.nc
+              ${this_year}/uvel/archv.${this_date}_3zu.nc
+              ${this_year}/vvel/archv.${this_date}_3zv.nc"
+
+    notFOUND=0
+    if [ ${iday} -lt 0 -o ${iday} -gt $(( ${nDAYS} - 1 )) ]; then
+      for idat in ${inp_name}
+      do
+        ftype="$( isNcdf "${URL}/${idat}" )"
+        notFOUND=$?
+      done
+    fi
+
+    if [ ${notFOUND} -eq 0 ]; then
+      this_inpLIST="${inpLIST%%.*}_`get3DString ${iday1}`.list"
+      this_outLIST="${outLIST%%.*}_`get3DString ${iday1}`.list"
+      [ -f "${this_inpLIST}" ] && rm -f "${this_inpLIST}"
+      [ -f "${this_outLIST}" ] && rm -f "${this_outLIST}"
+
+      for idat in ${inp_name}
+      do
+        echo "${URL}/${idat}" >> ${this_inpLIST}
+      done
+      echo "${out_name}" >> ${this_outLIST}
+
+      echo "${this_inpLIST}" >> ${inpLIST}
+      echo "${this_outLIST}" >> ${outLIST}
+
+      iday1=$(( ${iday1} + 1 ))
+    fi
+  done
+
+cat  <<'EOF' >> ${mySCRIPT}
+#!/bin/bash
+
+# Make sure that the current working directory is in the PATH
+[[ ! :$PATH: == *:".":* ]] && export PATH="${PATH}:."
+
+scrNAME=`basename $0 .sh`
+
+
+#------------------------------------------------------------
+# SOURCE THE UTILITY(COMMON) FUNCTIONS
+if [ -f functions_common ]; then
+  source functions_common
+else
+  echo " ### ERROR:: in ${scrNAME}"
+  echo "     Cannot load the required file: functions_common"
+  echo "     Exiting now ..."
+  echo
+  exit 1
+fi
+#------------------------------------------------------------
+
+
+if [ $# -lt 2 ]; then
+  procError "usage: ${scrNAME} inpLIST outLIST" \
+            "where [inpLIST, outLIST] are the lists that contains the names of the inp/out files"
+else
+  if [ ! -f "${1}" ]; then
+    procError "file \"${1}\" not found"
+  fi
+  if [ ! -f "${2}" ]; then
+    procError "file \"${2}\" not found"
+  fi
+fi
+
+myINP="${1}"
+myOUT="${2}"
+EOF
+
+  echo "GRIB_TYPE=\"${GRIB_TYPE}\""                  >> ${mySCRIPT}
+  echo "myI0=\"${GLBHC_I0}\""                        >> ${mySCRIPT}
+  echo "myI1=\"${GLBHC_I1}\""                        >> ${mySCRIPT}
+  echo "myJ0=\"${GLBHC_J0}\""                        >> ${mySCRIPT}
+  echo "myJ1=\"${GLBHC_J1}\""                        >> ${mySCRIPT}
+  echo "myPAR_CMD=\"${GPARAL}\""                     >> ${mySCRIPT}
+  echo "myPAR_OPTS_GLB=\"${GPARAL_OPTS_GLB}\""       >> ${mySCRIPT}
+  echo "myPAR_OPTS_SSH=\"${GPARAL_OPTS_SSH}\""       >> ${mySCRIPT}
+  echo "myPAR_OPTS_TIME=\"${GPARAL_OPTS_TIME}\""     >> ${mySCRIPT}
+  echo "myPAR_OPTS_RESUME=\"${GPARAL_OPTS_RESUME}\"" >> ${mySCRIPT}
+  echo "myLOG_DIR=\"${LogDir:-.}\""                  >> ${mySCRIPT}
+  echo "myWRK_DIR=\"${DataDir:-.}\""                 >> ${mySCRIPT}
+
+cat  <<'EOF' >> ${mySCRIPT}
+
+pushd ${myWRK_DIR} >/dev/null
+  inpFILE=( $(cat ${myINP}) )
+  outFILE="$(echo $(cat ${myOUT}) | awk '{print $1}')"
+  [ -f "${outFILE}" ] && rm -f "${outFILE}"
+
+  PROG_STATUS=0
+  for ((idat = 0; idat < ${#inpFILE[@]}; idat++))
+  do
+    ########################
+    # Check if the required dimensions exist in the input NetCDF file
+    tmp_var="`ncdf_getDim ${inpFILE[${idat}]} horx`"
+    if [ $? -ne 0 ]; then
+      procError "could not find the required horizontal dimension in the input file:" \
+                "INP FILE = ${inpFILE[${idat}]}" \
+                "SEARCHED FOR: horx"
+    fi
+    myXDIM="`echo ${tmp_var} | awk '{print $1}'`"
+
+    tmp_var="`ncdf_getDim ${inpFILE[${idat}]} hory`"
+    if [ $? -ne 0 ]; then
+      procError "could not find the required horizontal dimension in the input file:" \
+                "INP FILE = ${inpFILE[${idat}]}" \
+                "SEARCHED FOR: hory"
+    fi
+    myYDIM="`echo ${tmp_var} | awk '{print $1}'`"
+    ########################
+
+    ncks_opts="-a -h -A -D 1 -d ${myXDIM},${myI0},${myI1} -d ${myYDIM},${myJ0},${myJ1}"
+
+    echo "Appending data to ${outFILE}"
+    ncks ${ncks_opts} ${inpFILE[${idat}]} ${outFILE} 2>&1
+    PROG_STATUS=$(( ${PROG_STATUS} + $? ))
+  done
+
+  # Convert the Longitude variable to W-E notation
+  if [ ${PROG_STATUS} -eq 0 ]; then
+    ncdf_queryVars ${outFILE}
+    var_names=( ${NCDF_VAR_NAMES} )
+    unset NCDF_VAR_NAMES NCDF_VAR_VALUES
+
+    # Check for a "Longitude" variable
+    lonNAM=
+    chk_lonNAM="longitude lon lons lon_rho xlong"
+    for ((ivar = 0; ivar < ${#var_names[@]}; ivar++))
+    do
+      for chk_var in ${chk_lonNAM}
+      do
+        if [ "`toLOWER "${var_names[${ivar}]}"`" = "${chk_var}" ]; then
+          lonNAM="${var_names[${ivar}]}"
+          break 2
+        fi
+      done
+    done
+    
+    if [ -z "${lonNAM}" ]; then
+      procError "could not find a suitable Longitude variable in the file:" \
+                "FILE = ${outFILE}" \
+                "VARS IN FILE: ${var_names[*]}" \
+                "SEARCHED FOR: ${chk_lonNAM}"
+    fi
+
+    lons="${lonNAM}=((${lonNAM} + 180) % 360) - 180"
+    ncap2 -h -O -D 1 -s "${lons}" ${outFILE} ${outFILE} 2>&1
+    PROG_STATUS=$(( ${PROG_STATUS} + $? ))
+  fi
+
+  # Add the history of the appended data
+  ncatted_opts="-h -D 1"
+  if [ ${PROG_STATUS} -eq 0 ]; then
+    for ((idat = 0; idat < ${#inpFILE[@]}; idat++))
+    do
+      if [ ${idat} -eq 0 ]; then
+        hname="`dirname ${inpFILE[${idat}]}`"
+        hname="URL: `dirname ${hname}`"
+        echo "Adding to history global attribute: ${hname}"
+        ncatted ${ncatted_opts} \
+                -a history,global,a,c,"\n${hname}" ${outFILE} 2>&1
+        PROG_STATUS=$(( ${PROG_STATUS} + $? ))
+      fi
+      hname="`basename ${inpFILE[${idat}]}`"
+      echo "Adding to history global attribute: ${hname}"
+      ncatted ${ncatted_opts} \
+              -a history,global,a,c,"\n${hname}" ${outFILE} 2>&1
+      PROG_STATUS=$(( ${PROG_STATUS} + $? ))
+    done
+  fi
+
+  # Prepare the sea surface temperature data for WRF
+  # We use "cdo" the Climate Data Operators for this step
+  if [ ${PROG_STATUS} -eq 0 ]; then
+    SSTnc2grib "${outFILE}" --pfx="hycom_" ${GRIB_TYPE:+--gtype=${GRIB_TYPE}}
+    PROG_STATUS=$(( ${PROG_STATUS} + $? ))
+  fi
+
+  echo
+popd >/dev/null
+
+exit ${PROG_STATUS}
+EOF
+
+  chmod 0755 ${mySCRIPT}
+
+  return 0
+}
